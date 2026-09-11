@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amartya — Nivel de la cisterna</title>
+
+  <!-- Le dice al navegador que la página soporta los dos esquemas, así los
+       controles nativos (scrollbars, autofill) se dibujan acordes. La hoja de
+       estilos arranca en claro y agrega el oscuro con prefers-color-scheme:
+       el contexto de uso es rural y a la intemperie, donde la pantalla se
+       mira con sol de frente y el fondo claro gana. -->
+  <meta name="color-scheme" content="light dark">
+
+  <link rel="stylesheet" href="style.css?v=3">
+</head>
+<body>
+
+<!-- ==========================================================================
+     CAPA 0 — encabezado
+
+     Solo dos cosas: de qué tanque estamos hablando y si la página está en
+     contacto con el backend. El estado de conexión va acá arriba y no abajo
+     porque es la condición de validez de TODO lo demás: si esto está en rojo,
+     ningún número de la pantalla se puede creer.
+     ========================================================================== -->
+<header class="encabezado">
+  <div class="encabezado__identidad">
+    <p class="encabezado__proyecto">Amartya</p>
+    <h1 class="encabezado__sitio" id="nombre-sitio">Cisterna</h1>
+  </div>
+
+  <!-- aria-live="polite" y no "assertive": que un cambio de conexión se
+       anuncie cuando el lector de pantalla termine lo que está diciendo, sin
+       cortarle la frase al usuario. -->
+  <p class="conexion conexion--conectando" id="conexion" role="status" aria-live="polite">
+    Conectando…
+  </p>
+</header>
+
+<main class="contenido">
+
+  <!-- ========================================================================
+       CAPA 1 — la respuesta
+
+       Todo lo de esta sección responde una sola pregunta: "¿me queda agua y
+       hasta cuándo?". Es lo único que le importa a quien abre esto desde el
+       celular parado al lado del tanque. No hay jerga, no hay ninguna unidad
+       que haya que interpretar, y el dato más importante es el más grande de
+       la pantalla por lejos.
+       ======================================================================== -->
+  <section class="respuesta" aria-labelledby="titulo-respuesta">
+    <h2 class="sr-only" id="titulo-respuesta">Estado de la cisterna</h2>
+
+    <!-- El veredicto en palabras, ANTES de cualquier número. Un porcentaje no
+         es una respuesta: "68%" obliga a saber de memoria cuál es el umbral
+         para decidir si eso está bien o mal. La frase sí es una respuesta.
+
+         Es un aria-live para que un cambio de estado (pasar a "nivel bajo") se
+         anuncie solo, sin que haya que volver a recorrer la página. -->
+    <div class="veredicto" id="veredicto" role="status" aria-live="polite">
+      <p class="veredicto__titulo" id="veredicto-titulo">Leyendo el último dato…</p>
+      <!-- La segunda línea dice QUÉ HACER, no solo qué pasa. Es donde va la
+           diferencia entre los estados que se parecen: "sin datos" manda a
+           revisar energía y señal, "sensor sin responder" manda a revisar el
+           cable. Sin esta línea los dos serían un cartel de color distinto sin
+           ninguna instrucción, que es lo que obliga a llamar por teléfono a
+           quien instaló el equipo. Va dentro del mismo aria-live para que el
+           lector de pantalla anuncie el problema y la acción juntos. -->
+      <p class="veredicto__detalle" id="veredicto-detalle" hidden></p>
+    </div>
+
+    <div class="tanque-y-lectura">
+
+      <!-- El dibujo del tanque.
+
+           aria-hidden a propósito: el porcentaje y los litros están escritos
+           al lado en texto real. Si el SVG también los anunciara, un lector de
+           pantalla leería el mismo dato dos veces. El dibujo es para el ojo;
+           la accesibilidad la resuelve el texto de al lado. -->
+      <div class="tanque">
+        <!-- El dibujo tiene tres trabajos, en este orden:
+             1. Decir cuánta agua hay (el nivel).
+             2. Decir contra qué (la marca del umbral).
+             3. Decir de dónde sale el número (el sensor arriba).
+
+             El tercero no es decoración. La primera versión de este dibujo era
+             un rectángulo con una tapita arriba y se leía como el icono de una
+             PILA, no como un tanque — con el agregado perverso de que una pila
+             al 62% significa lo mismo que un tanque al 62%, así que el error
+             no se notaba, solo dejaba la pantalla sintiéndose genérica. El
+             módulo del sensor apoyado en la tapa mata esa lectura y de paso
+             muestra cómo se mide: desde arriba, sin contacto con el agua. -->
+        <svg class="tanque__svg" viewBox="0 0 150 178" aria-hidden="true" focusable="false">
+          <defs>
+            <!-- Recorta el agua contra la pared interior. Sin esto la ola se
+                 dibujaría por fuera del recipiente. La forma del agua es más
+                 ancha que el clip a propósito, así nunca se ve su borde recto. -->
+            <clipPath id="clip-interior">
+              <rect x="23" y="31" width="102" height="126" rx="6"/>
+            </clipPath>
+          </defs>
+
+          <!-- La salida de abajo. Va dibujada primero para que la pared del
+               tanque le pase por encima y se vea nacer del fondo. -->
+          <rect class="tanque__salida" x="100" y="158" width="8" height="10"/>
+          <rect class="tanque__salida" x="95" y="167" width="18" height="4" rx="1.5"/>
+
+          <!-- Interior vacío: el fondo contra el que se ve subir el agua. -->
+          <rect class="tanque__interior" x="23" y="31" width="102" height="126" rx="6"/>
+
+          <g clip-path="url(#clip-interior)">
+            <!-- El agua se mueve trasladando este grupo hacia abajo. Se anima
+                 `transform` y no el alto del rect porque transform lo resuelve
+                 el compositor (no fuerza relayout) y porque un alto animado en
+                 SVG no tiene el mismo soporte entre navegadores. -->
+            <g class="tanque__agua" id="agua">
+              <!-- La ola es estática, no un loop. Da la lectura de "esto es
+                   agua" sin que la pantalla tenga una animación permanente
+                   girando en el bolsillo de alguien.
+
+                   La cresta está a la altura y=31, que es el tope del interior:
+                   con translateY(0) el tanque queda lleno y con translateY(126)
+                   queda vacío. -->
+              <path d="M10,31 C28,23 46,39 64,31 C82,23 100,39 118,31 C128,26 136,33 144,30 L144,180 L10,180 Z"/>
+            </g>
+          </g>
+
+          <!-- La pared, dibujada después del agua para que el borde quede
+               entero y parejo por encima de ella. Es deliberadamente MÁS ANCHA
+               QUE ALTA: la versión anterior era un rectángulo angosto y
+               vertical y el ojo lo leía como una pila, no como un tanque. -->
+          <rect class="tanque__pared" x="20" y="28" width="108" height="132" rx="9"/>
+
+          <!-- El módulo del sensor, apoyado sobre la tapa. Apaisado y ancho, no
+               un botoncito centrado: un botoncito centrado arriba de un
+               rectángulo ES el borne de una pila, y era la mitad del problema. -->
+          <rect class="tanque__sensor" x="56" y="16" width="36" height="12" rx="2.5"/>
+          <!-- Los dos transductores del ultrasónico (emisor y receptor), que es
+               lo que lo hace reconocible como sensor. Van FUERA del grupo
+               recortado, así el agua no los tapa cuando el tanque está al tope. -->
+          <circle class="tanque__transductor" cx="68" cy="37" r="3.4"/>
+          <circle class="tanque__transductor" cx="80" cy="37" r="3.4"/>
+
+          <!-- Marca del umbral de aviso: un triángulo APOYADO EN LA PARED POR
+               FUERA, no una línea punteada por dentro.
+
+               La primera versión era una línea cruzando el tanque, y tenía un
+               defecto que solo se ve al probarla con el tanque lleno: quedaba
+               dibujada sobre el agua, gris sobre azul, y desaparecía justo en
+               el caso en que hay que poder ver cuánto falta para llegar a
+               ella. Por fuera se lee siempre igual, con agua o sin agua.
+               La posición la calcula app.js, porque el umbral es configurable. -->
+          <polygon class="tanque__umbral" id="marca-umbral" points="7,90 7,98 17,94"/>
+        </svg>
+
+        <p class="tanque__nota" id="nota-umbral">Nivel de aviso</p>
+      </div>
+
+      <div class="lectura">
+        <!-- El porcentaje es el dato grande. La unidad va en un span aparte y
+             más chica: "68" es el número, "%" es la unidad, y darles el mismo
+             peso hace que el ojo tenga que separarlos solo. -->
+        <p class="lectura__principal">
+          <span class="lectura__numero" id="nivel-pct">—</span><span
+            class="lectura__unidad" id="nivel-unidad">%</span>
+        </p>
+
+        <!-- Los litros van abajo y más chicos: son el mismo dato traducido.
+             Para decidir "¿llamo al camión?" el porcentaje alcanza; los litros
+             sirven cuando hay que pedir una cantidad concreta.
+
+             Tanto esta línea como el "%" de arriba se OCULTAN cuando no hay
+             medición, en vez de mostrar "—%" y "— litros": una unidad sin
+             número no informa nada y deja la pantalla con aire de formulario a
+             medio llenar. El guión solo, grande, ya dice "no hay dato". -->
+        <p class="lectura__litros" id="linea-litros"><span id="nivel-litros">—</span> litros</p>
+
+        <p class="lectura__antiguedad" id="antiguedad">—</p>
+      </div>
+    </div>
+
+    <!-- Las dos cifras derivadas que convierten "cuánto hay" en "cuánto dura".
+         Van en un <dl> y no en divs porque son literalmente pares
+         término/valor, y eso es lo que un lector de pantalla necesita para
+         leerlas apareadas. -->
+    <!-- Los dos derivados NO repiten el veredicto.
+
+         En la primera versión el primero decía "Alcanza para: unos 9 días",
+         que es literalmente la misma frase que ya estaba arriba en grande.
+         Dos lugares diciendo lo mismo no son énfasis, son una cosa más para
+         leer. Ahora dice la FECHA, que es el dato que hace falta para agendar
+         el camión y que "9 días" obliga a calcular mentalmente. -->
+    <dl class="derivados">
+      <div class="derivado">
+        <dt class="derivado__rotulo">Se quedaría sin agua</dt>
+        <dd class="derivado__valor" id="fecha-vacio">—</dd>
+      </div>
+      <div class="derivado">
+        <dt class="derivado__rotulo">Consumo por día</dt>
+        <dd class="derivado__valor" id="consumo">—</dd>
+      </div>
+    </dl>
+
+    <!-- De dónde sale la autonomía. Airbnb lo llama "mostrar en qué te
+         apoyás": una estimación sin su base es una adivinanza con formato de
+         dato. Acá además importa porque la cuenta se rompe sola si alguien
+         llenó el tanque ayer, y quien mira tiene que poder darse cuenta. -->
+    <p class="salvedad" id="salvedad">
+      La estimación usa el consumo de los últimos días. Un llenado reciente la
+      cambia.
+    </p>
+  </section>
+
+  <!-- ========================================================================
+       CAPA 1.5 — el histórico
+
+       No está escondido porque no es un dato técnico: "¿viene bajando rápido?"
+       es una pregunta que se hace cualquiera, no solo el que instaló el nodo.
+       Lo que sí es técnico va más abajo, en el <details>.
+       ======================================================================== -->
+  <section class="historico" aria-labelledby="titulo-historico">
+    <div class="historico__encabezado">
+      <h2 class="titulo-seccion" id="titulo-historico">Cómo viene</h2>
+
+      <!-- Selector de ventana. Son botones con aria-pressed y no un <select>
+           porque son dos opciones y se tocan con el pulgar: un select abre un
+           menú nativo para elegir entre dos cosas, que es un paso de más. -->
+      <div class="rango" role="group" aria-label="Ventana de tiempo del gráfico">
+        <button type="button" class="rango__boton" data-horas="24" aria-pressed="true">24 h</button>
+        <button type="button" class="rango__boton" data-horas="168" aria-pressed="false">7 días</button>
+      </div>
+    </div>
+
+    <div class="grafico-caja">
+      <canvas id="grafico" aria-label="Gráfico del nivel de la cisterna en el tiempo" role="img"></canvas>
+
+      <!-- Un canvas vacío no se ve vacío: Chart.js le dibuja ejes con valores
+           inventados (0 a 1) y parece un sistema roto. Este cartel lo tapa
+           mientras no haya serie. Ojo con el `hidden`: la clase usa display
+           flex, que le gana por especificidad al display:none del atributo, y
+           por eso el CSS tiene una regla `.grafico-vacio[hidden]`. -->
+      <p class="grafico-vacio" id="grafico-vacio" hidden>Todavía no hay histórico para mostrar.</p>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       CAPA 2 — el detalle técnico
+
+       Cerrado por default. Quien viene a saber si le queda agua no necesita
+       ver nada de esto; quien vino a arreglar el nodo lo abre y lo tiene todo
+       junto. Es un <details> nativo: el teclado, el lector de pantalla y el
+       "buscar en la página" del navegador ya lo saben manejar, cosa que una
+       versión hecha a mano con un div y un click habría que reimplementar.
+       ======================================================================== -->
+  <details class="detalle" id="detalle">
+    <summary class="detalle__resumen">
+      <span class="detalle__titulo">Detalle del nodo</span>
+      <span class="detalle__pista" id="detalle-pista"></span>
+    </summary>
+
+    <dl class="ficha">
+      <div class="ficha__fila">
+        <dt>Estado del nodo</dt>
+        <dd id="ficha-estado">—</dd>
+      </div>
+      <div class="ficha__fila">
+        <dt>Última lectura</dt>
+        <dd id="ficha-ultima">—</dd>
+      </div>
+      <div class="ficha__fila">
+        <!-- El dato crudo del sensor. Va acá y no arriba porque es la medición
+             real: todo lo demás (nivel, litros, autonomía) sale de restarle
+             esto a la altura del tanque. Cuando algo no cierra, es el primer
+             número que hay que mirar. -->
+        <dt>Distancia al agua</dt>
+        <dd id="ficha-distancia">—</dd>
+      </div>
+      <div class="ficha__fila">
+        <dt>Columna de agua</dt>
+        <dd id="ficha-columna">—</dd>
+      </div>
+      <div class="ficha__fila">
+        <dt>Reloj del nodo</dt>
+        <dd id="ficha-reloj">—</dd>
+      </div>
+      <div class="ficha__fila">
+        <dt>Señal WiFi</dt>
+        <dd id="ficha-senal">—</dd>
+      </div>
+      <div class="ficha__fila">
+        <dt>Geometría del tanque</dt>
+        <dd id="ficha-geometria">—</dd>
+      </div>
+      <div class="ficha__fila">
+        <dt>Origen de los datos</dt>
+        <dd id="ficha-origen">—</dd>
+      </div>
+    </dl>
+  </details>
+
+</main>
+
+<footer class="pie">
+  <p id="pie-texto">
+    El nivel se calcula a partir de la distancia medida por el sensor y la
+    altura configurada del tanque.
+  </p>
+</footer>
+
+<script src="vendor/chart.umd.js"></script>
+<!-- config.js tiene la URL del backend, la geometría del tanque y los umbrales.
+     SÍ está versionado —no contiene secretos y así el repo recién clonado se
+     abre y anda—, pero se edita por instalación. Tiene que cargar antes que
+     datos.js y app.js, que lo leen al arrancar. -->
+<!-- El `?v=` no es un capricho de desarrollo: si el navegador sirve un
+     config.js viejo de su caché, la página calcula el nivel con la geometría
+     anterior del tanque y muestra un número equivocado con total confianza.
+     Al cambiar cualquier valor de config.js hay que subir este número. -->
+<script src="config.js?v=5"></script>
+<script src="datos.js?v=3"></script>
+<script src="app.js?v=6"></script>
+</body>
+</html>

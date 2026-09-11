@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amartya — verificaciones</title>
+  <style>
+    /* Deliberadamente feo y sin depender de style.css: si esta página usara la
+       hoja de estilos de la aplicación, un error de CSS podría esconder el
+       resultado de un test. Lo único que tiene que hacer es ser legible. */
+    body { font: 14px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
+           margin: 0; padding: 24px; background: #16171a; color: #e8e8e6; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    h2 { font-size: 14px; margin: 24px 0 8px; color: #8d9096; font-weight: 600; }
+    p.intro { color: #8d9096; margin: 0 0 8px; max-width: 70ch; }
+    .ok    { color: #7fd6a0; }
+    .falla { color: #ff9b8d; font-weight: 700; }
+    #total { margin-top: 24px; padding: 12px 16px; border-radius: 8px; font-weight: 700; }
+    #total.bien { background: #16301f; color: #b4eecb; }
+    #total.mal  { background: #3b1712; color: #ffc7bf; }
+  </style>
+</head>
+<body>
+  <h1>Verificaciones del simulador y de las cuentas de nivel</h1>
+  <p class="intro">
+    Se abre en el navegador, sin instalar nada. Existe porque el simulador es la
+    única fuente de datos hasta que haya hardware, y un error acá no se ve como
+    un error: se ve como una pantalla andando que muestra otra cosa. Ya pasó una
+    vez — pidiendo 6% la pantalla mostraba 88%, en silencio.
+  </p>
+
+  <div id="salida"></div>
+  <div id="total"></div>
+
+  <!-- Config inicial: la misma de config.js, para que lo que se verifica sea la
+       instalación real y no un caso inventado. Los tests la van mutando. -->
+  <script>
+    window.AMARTYA_CONFIG = {
+      origen: "simulado",
+      tanque: { distanciaFondoCm: 180, distanciaLlenoCm: 25, capacidadLitros: 5000 },
+      umbrales: { avisoPct: 25, criticoPct: 10 },
+      cicloNodoSegundos: 900,
+      simulacion: {
+        pctAhora: 62,
+        escenario: "normal",
+        consumoLitrosPorDia: 340,
+        llenoPct: 96,
+        vaciaHastaPct: 14,
+      },
+    };
+  </script>
+  <script src="datos.js?v=3"></script>
+
+  <script>
+  (async function () {
+    "use strict";
+
+    let fallas = 0;
+
+    function titulo(texto) {
+      const h = document.createElement("h2");
+      h.textContent = texto;
+      document.getElementById("salida").appendChild(h);
+    }
+
+    function verificar(descripcion, condicion, detalle) {
+      const p = document.createElement("div");
+      p.className = condicion ? "ok" : "falla";
+      p.textContent = (condicion ? "ok    " : "FALLA ") + descripcion +
+                      (!condicion && detalle ? "   -> " + detalle : "");
+      document.getElementById("salida").appendChild(p);
+      if (!condicion) fallas++;
+    }
+
+    /* Ajusta la parte de simulación de la config. `Datos` lee la config en cada
+       llamada (no la copia al cargarse), así que alcanza con mutarla. */
+    function conSimulacion(cambios) {
+      Object.assign(window.AMARTYA_CONFIG.simulacion, cambios);
+      return window.AMARTYA_CONFIG;
+    }
+
+    /* La misma cuenta que hace app.js, escrita de nuevo acá a propósito: si el
+       test importara la función de app.js, un error en esa función haría pasar
+       el test igual. */
+    function pctDesdeDistancia(distanciaCm, cfg) {
+      const t = cfg.tanque;
+      const alturaUtil = t.distanciaFondoCm - t.distanciaLlenoCm;
+      const columna = t.distanciaFondoCm - distanciaCm;
+      return Math.max(0, Math.min(100, (columna / alturaUtil) * 100));
+    }
+
+    // =====================================================================
+    titulo("El nivel que se pide en la config es el que se muestra");
+
+    // El caso que falló de verdad es pctAhora por DEBAJO de vaciaHastaPct (14)
+    // o por ENCIMA de llenoPct (96): ahí la fase del ciclo se envolvía.
+    for (const pedido of [99, 96, 62, 25, 14, 6, 1]) {
+      const cfg = conSimulacion({ pctAhora: pedido, escenario: "normal" });
+      const lectura = await window.Datos.estado();
+      const obtenido = pctDesdeDistancia(lectura.distanciaCm, cfg);
+
+      // 1.5 puntos de tolerancia: el simulador agrega a propósito ruido de
+      // +/-0.8 cm en el sensor y una onda diaria de +/-0.6 puntos.
+      verificar(
+        "pctAhora " + String(pedido).padStart(2) + "%  ->  muestra " + obtenido.toFixed(1) + "%",
+        Math.abs(obtenido - pedido) < 1.5,
+        "esperaba ~" + pedido + "%"
+      );
+    }
+
+    // =====================================================================
+    titulo("Escenarios de falla del nodo");
+
+    conSimulacion({ pctAhora: 62, escenario: "sensor-roto" });
+    const sensorRoto = await window.Datos.estado();
+    verificar(
+      "sensor-roto: llega sin medición y marcado inválido",
+      sensorRoto.distanciaCm === null && sensorRoto.valid === false
+    );
+    verificar(
+      "sensor-roto: el reloj SIGUE siendo confiable (es falla de sensor, no de red)",
+      sensorRoto.relojConfiable === true
+    );
+
+    conSimulacion({ escenario: "reloj-roto" });
+    const relojRoto = await window.Datos.estado();
+    verificar(
+      "reloj-roto: el reloj se detecta como no confiable",
+      relojRoto.relojConfiable === false,
+      "timestampMs = " + relojRoto.timestampMs
+    );
+    verificar(
+      "reloj-roto: la medición en sí sigue siendo válida",
+      relojRoto.valid === true && relojRoto.distanciaCm !== null
+    );
+
+    conSimulacion({ escenario: "sin-datos" });
+    const sinDatos = await window.Datos.estado();
+    const horas = (Date.now() - sinDatos.timestampMs) / 3600000;
+    verificar(
+      "sin-datos: la lectura queda vieja (" + horas.toFixed(1) + " h de atraso)",
+      horas > 3,
+      "solo " + horas.toFixed(1) + " h"
+    );
+    // El umbral de la app son 3 ciclos de 900 s = 45 min. Con 6 h de atraso
+    // tiene que caer holgadamente del lado de "sin datos".
+    verificar(
+      "sin-datos: supera el umbral de 3 ciclos del nodo (45 min)",
+      Date.now() - sinDatos.timestampMs > 900 * 1000 * 3
+    );
+
+    // =====================================================================
+    titulo("Serie histórica");
+
+    const cfg = conSimulacion({ pctAhora: 40, escenario: "normal" });
+    const serie = await window.Datos.historico(168);
+
+    verificar("7 días devuelven una serie usable", serie.length > 100,
+      serie.length + " puntos");
+
+    verificar(
+      "la serie viene ordenada de más vieja a más nueva",
+      serie.every((p, i) => i === 0 || p.timestampMs >= serie[i - 1].timestampMs)
+    );
+
+    verificar(
+      "ningún punto del histórico se descarta por reloj o validez",
+      serie.every((p) => p.relojConfiable && p.valid)
+    );
+
+    // Si en 7 días no aparece el ciclo de vaciado y llenado, el gráfico de la
+    // demo es una recta y no se parece a una cisterna.
+    const pcts = serie.map((p) => pctDesdeDistancia(p.distanciaCm, cfg));
+    const recorrido = Math.max(...pcts) - Math.min(...pcts);
+    verificar(
+      "en 7 días se ve el ciclo de vaciado y llenado (recorrido " + recorrido.toFixed(0) + " puntos)",
+      recorrido > 20,
+      "recorrido de solo " + recorrido.toFixed(0)
+    );
+
+    // =====================================================================
+    titulo("Geometría: la cuenta de distancia a nivel");
+
+    // Los tres casos que importan, calculados a mano contra la config real
+    // (fondo 180 cm, lleno 25 cm, o sea 155 cm de altura útil).
+    verificar("distancia 25 cm  -> 100% (tanque lleno)",
+      Math.abs(pctDesdeDistancia(25, cfg) - 100) < 0.01);
+    verificar("distancia 180 cm ->   0% (tanque vacío)",
+      Math.abs(pctDesdeDistancia(180, cfg) - 0) < 0.01);
+    verificar("distancia 102.5 cm -> 50% (mitad exacta)",
+      Math.abs(pctDesdeDistancia(102.5, cfg) - 50) < 0.01);
+    // Fuera de rango se recorta en vez de mostrar 110%: un número imposible al
+    // lado de uno correcto hace dudar de los dos.
+    verificar("distancia 10 cm (por encima del lleno) se recorta a 100%",
+      pctDesdeDistancia(10, cfg) === 100);
+    verificar("distancia 200 cm (por debajo del fondo) se recorta a 0%",
+      pctDesdeDistancia(200, cfg) === 0);
+
+    // =====================================================================
+    const total = document.getElementById("total");
+    total.className = fallas === 0 ? "bien" : "mal";
+    total.textContent = fallas === 0
+      ? "Todo bien — ninguna verificación falló."
+      : fallas + " verificación(es) fallaron.";
+  })();
+  </script>
+</body>
+</html>

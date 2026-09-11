@@ -1,0 +1,772 @@
+/* Amartya — nivel de cisterna.
+   =========================================================================
+
+   CONTEXTO DE USO PRIMARIO: el celular, al aire libre, en el campo. Eso manda
+   dos decisiones que se toman acá arriba y se sienten en todo el archivo:
+
+   1. Mobile-first de verdad. Las reglas base son las del teléfono y los @media
+      AGREGAN lo que sobra en pantallas grandes, no al revés. La pantalla de
+      escritorio es el caso raro de este proyecto, no el default.
+
+   2. Tema CLARO por default, oscuro como variante. Es al revés que el
+      dashboard de Casa Rosada, y a propósito: aquel vive en un sótano y en una
+      pantalla de pared; este se mira con el sol de frente, donde un fondo
+      oscuro se convierte en un espejo. El oscuro igual está, vía
+      prefers-color-scheme, para quien lo tenga puesto en el sistema.
+
+   Todo color, tamaño y espacio vive como custom property en :root. No es
+   prolijidad: con los valores sueltos por el archivo, cambiar el azul del agua
+   obliga a buscarlo en ocho lugares y es cuestión de tiempo que queden dos
+   azules distintos.
+   ========================================================================= */
+
+:root {
+  /* --- Superficies ---
+     Ningún blanco puro. #fff contra texto #000 es duro y se lee como sin
+     terminar; estos neutros tienen todos la misma temperatura (levemente
+     cálida) para que no se vea un gris "sucio" al lado de otro. */
+  --fondo: #f2f2ef;
+  --superficie: #fbfbf9;
+  --borde: #dededa;
+  --borde-fuerte: #bebeb7;
+
+  /* Trazo de los dibujos que hay que poder LEER, separado del gris de los
+     bordes decorativos. WCAG 1.4.11 pide 3:1 para un grafico del que depende
+     entender el contenido, y la pared del tanque es exactamente eso: sin ella
+     el agua es una mancha azul sin referencia contra la cual leer el nivel.
+     El borde de una tarjeta, en cambio, no hace falta verlo para entender
+     nada, y por eso sigue siendo --borde y no se mide igual. Medido: 3.35:1
+     en claro y 4.07:1 en oscuro (tools/contraste.py). */
+  --trazo-grafico: #8a8a83;
+
+  /* Texto que va ENCIMA del azul del agua (hoy solo el boton de rango activo).
+     Es un token y no un #fff escrito en la regla porque en tema oscuro el azul
+     se aclara y el blanco cae a 2.81:1 — ilegible. */
+  --sobre-agua: #ffffff;
+
+  /* --- Texto ---
+     Tres niveles y no más. Cada nivel extra es una decisión más para quien
+     escriba una pantalla nueva, y termina en grises inventados. */
+  --texto: #1b1b19;
+  --texto-suave: #55554e;
+  --texto-tenue: #6b6b64;
+
+  /* --- El agua ---
+     Es el único color con carga de marca del proyecto. Se usa para el agua del
+     tanque y para la serie del gráfico, y para nada más: si además pintara
+     botones y títulos, dejaría de significar "agua". */
+  --agua: #1c6f9c;
+  --agua-hondo: #15557a;
+  --agua-tenue: #d3e6f0;
+
+  /* --- Estados ---
+     Cada estado trae fondo, borde y texto juntos, para que no se pueda usar
+     medio estado. Los pares están medidos contra WCAG AA (ver docs/), no
+     estimados a ojo.
+
+     Hay DOS ejes de estado y no uno, que es la corrección más importante del
+     diseño: el nivel del agua (ok / bajo / crítico) y la salud del nodo
+     (sin datos / reloj / sensor). Un tanque lleno con el sensor roto no es
+     "ok", pero tampoco es "vacío" — son dos cosas distintas que se arreglan
+     llamando a dos personas distintas, y por eso tienen colores distintos. */
+  --ok-fondo: #e3f2e8;
+  --ok-borde: #4f9168;
+  --ok-texto: #1d5334;
+
+  --bajo-fondo: #fbeed4;
+  --bajo-borde: #b58028;
+  --bajo-texto: #6b4805;
+
+  --critico-fondo: #fae2de;
+  --critico-borde: #c0483a;
+  --critico-texto: #8a2418;
+
+  /* Nodo mudo: gris, porque no afirma nada sobre el agua. */
+  --mudo-fondo: #e8e8e4;
+  --mudo-borde: #9a9a93;
+  --mudo-texto: #4a4a44;
+
+  /* Reloj sin sincronizar y sensor sin responder: violeta. Deliberadamente
+     fuera de la escala verde/ámbar/rojo, porque no son "más grave que ámbar":
+     son otra cosa. Un ámbar acá haría pensar que el agua está baja. */
+  --nodo-fondo: #e9e6f6;
+  --nodo-borde: #6d5eae;
+  --nodo-texto: #443a72;
+
+  /* --- Escala tipográfica ---
+     Cinco tamaños. Una escala fija en vez de un tamaño distinto por elemento
+     es lo que hace que la jerarquía se lea sin bordes ni cajas de color. */
+  --txt-xs: 0.75rem;
+  --txt-sm: 0.875rem;
+  --txt-md: 1rem;
+  --txt-lg: 1.25rem;
+  --txt-xl: 1.75rem;
+  /* El porcentaje. Es el único elemento de la pantalla al que se le permite
+     ser grande — si hubiera tres cosas grandes, no habría ninguna. */
+  --txt-display: 4.25rem;
+
+  /* --- Espaciado, escala de 4px ---
+     El hueco DENTRO de un grupo tiene que ser visiblemente menor que el hueco
+     ENTRE grupos, si no la agrupación se deshace y todo parece una lista
+     plana. Por eso no hay valores sueltos tipo `margin-top: 13px`. */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+
+  --radio: 14px;
+  --radio-chico: 9px;
+
+  /* Mínimo táctil. 44px es el mínimo de Apple y 48dp el de Google; se toma el
+     más chico como piso absoluto para cualquier cosa que se toque o reciba
+     foco. Acá se usa de pie, al aire libre y probablemente con una mano
+     ocupada. */
+  --toque-min: 44px;
+
+  /* Una escala de elevación chica y documentada, en vez de un z-index: 9999
+     cada vez que algo queda tapado. Hoy solo hace falta un nivel. */
+  --z-sobre-canvas: 2;
+}
+
+/* Variante oscura. Solo se redefinen los TOKENS — ni una regla de layout se
+   duplica acá abajo. Si esto tuviera sus propias reglas de layout, cada cambio
+   futuro habría que hacerlo dos veces y una de las dos se olvidaría. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #16171a;
+    --superficie: #1f2124;
+    --borde: #34373c;
+    --borde-fuerte: #4d5158;
+    --trazo-grafico: #7c8088;
+    /* Azul claro de fondo -> el texto de encima tiene que ser oscuro. */
+    --sobre-agua: #0b1f2b;
+
+    --texto: #f0f1f2;
+    --texto-suave: #b3b6bb;
+    --texto-tenue: #8d9096;
+
+    --agua: #4aa3d4;
+    --agua-hondo: #2d7ba8;
+    --agua-tenue: #16304a;
+
+    --ok-fondo: #16301f;
+    --ok-borde: #3f8a5c;
+    --ok-texto: #b4eecb;
+
+    --bajo-fondo: #362a10;
+    --bajo-borde: #b3862f;
+    --bajo-texto: #f4dba4;
+
+    --critico-fondo: #3b1712;
+    --critico-borde: #c4503f;
+    --critico-texto: #ffc7bf;
+
+    --mudo-fondo: #26282b;
+    --mudo-borde: #6e7279;
+    --mudo-texto: #b6b9be;
+
+    --nodo-fondo: #241f38;
+    --nodo-borde: #7a6ac0;
+    --nodo-texto: #cfc6f2;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-4) var(--sp-6);
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--txt-md);
+  line-height: 1.5;
+
+  /* Números tabulares en toda la página. Sin esto, un valor que pasa de 9% a
+     10% cambia el ancho del texto y el bloque entero se mueve. En una pantalla
+     que se refresca sola cada pocos segundos, ese temblor permanente es de las
+     cosas que hacen que una interfaz se sienta rota sin que se pueda decir
+     por qué. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ancho máximo de lectura. En una pantalla grande, dejar que el contenido se
+   estire de borde a borde hace que el ojo pierda el renglón. */
+.contenido {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+/* Texto solo para lectores de pantalla: fuera de la vista, pero presente en el
+   árbol de accesibilidad. `display: none` no serviría — eso lo saca también
+   del lector. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Foco visible y consistente. :focus-visible y no :focus para que el anillo
+   aparezca al navegar con teclado pero no al tocar con el dedo. Nunca
+   `outline: none` sin reemplazo. */
+:focus-visible {
+  outline: 2px solid var(--agua);
+  outline-offset: 2px;
+  border-radius: var(--radio-chico);
+}
+
+/* Respeta a quien pidió menos movimiento en su sistema. No apaga la interfaz:
+   los estados siguen cambiando, lo que desaparece es la interpolación. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Encabezado
+   ========================================================================== */
+
+.encabezado {
+  max-width: 46rem;
+  margin: 0 auto var(--sp-5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.encabezado__proyecto {
+  margin: 0;
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--texto-tenue);
+}
+
+.encabezado__sitio {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  /* La interlínea se aprieta a medida que el tamaño crece: 1.5 en un título
+     de 20px deja un hueco que lo despega del rótulo de arriba. */
+  line-height: 1.2;
+}
+
+/* Píldora de conexión. Empieza en "conectando" y la maneja app.js. */
+.conexion {
+  margin: 0;
+  flex-shrink: 0;
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 999px;
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  color: var(--texto-suave);
+  background: var(--superficie);
+  transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
+}
+
+.conexion--ok {
+  background: var(--ok-fondo);
+  border-color: var(--ok-borde);
+  color: var(--ok-texto);
+}
+
+.conexion--caida {
+  background: var(--critico-fondo);
+  border-color: var(--critico-borde);
+  color: var(--critico-texto);
+}
+
+/* ==========================================================================
+   CAPA 1 — la respuesta
+   ========================================================================== */
+
+.respuesta {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: var(--sp-5) var(--sp-4);
+}
+
+/* El veredicto: la frase que responde la pregunta. Es lo primero que se lee,
+   así que tiene el segundo peso tipográfico de la pantalla después del
+   porcentaje. El borde izquierdo grueso es lo que cambia de color según el
+   estado — una barra de 4px alcanza y no obliga a pintar un bloque entero de
+   color, que a esta altura de la pantalla gritaría. */
+.veredicto {
+  margin: 0 0 var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  border-left: 4px solid var(--borde-fuerte);
+  border-radius: 0 var(--radio-chico) var(--radio-chico) 0;
+  background: var(--fondo);
+  color: var(--texto);
+  transition: background-color 200ms ease-out, border-color 200ms ease-out, color 200ms ease-out;
+}
+
+.veredicto__titulo {
+  margin: 0;
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* La instrucción, más chica y sin negrita. Hereda `color` del bloque en vez de
+   tener el suyo: si usara --texto-suave, sobre el fondo rojo del estado crítico
+   quedaría en un gris que no contrasta. Se atenúa con opacidad, que mantiene
+   la relación de contraste dentro de lo aceptable sobre cualquiera de los
+   cinco fondos de estado. */
+.veredicto__detalle {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--txt-sm);
+  font-weight: 400;
+  line-height: 1.45;
+  opacity: 0.85;
+  max-width: 48ch;
+}
+
+/* El atributo `hidden` alcanza acá porque .veredicto__detalle no declara
+   `display`, así que no hay nada que le gane por especificidad. */
+
+.veredicto--ok       { background: var(--ok-fondo);      border-left-color: var(--ok-borde);      color: var(--ok-texto); }
+.veredicto--bajo     { background: var(--bajo-fondo);    border-left-color: var(--bajo-borde);    color: var(--bajo-texto); }
+.veredicto--critico  { background: var(--critico-fondo); border-left-color: var(--critico-borde); color: var(--critico-texto); }
+.veredicto--mudo     { background: var(--mudo-fondo);    border-left-color: var(--mudo-borde);    color: var(--mudo-texto); }
+.veredicto--nodo     { background: var(--nodo-fondo);    border-left-color: var(--nodo-borde);    color: var(--nodo-texto); }
+
+/* El dibujo y los números, lado a lado. En el teléfono el tanque queda a la
+   izquierda y el número a la derecha porque leemos de izquierda a derecha: se
+   ve la forma, se confirma con la cifra. */
+.tanque-y-lectura {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.tanque {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.tanque__svg {
+  width: 122px;
+  height: auto;
+  display: block;
+}
+
+.tanque__interior {
+  fill: var(--fondo);
+}
+
+.tanque__agua {
+  fill: var(--agua);
+  /* La geometría del interior vive en el SVG y app.js la repite para calcular
+     el desplazamiento. Están acopladas: si se cambia el `rect` del clip en el
+     HTML, hay que cambiar ALTO_INTERIOR y TOPE_INTERIOR en app.js. */
+  /* La transición del nivel. 450ms es más largo que los 150-250ms de una
+     transición de interfaz, a propósito: esto no es un hover, es un dato
+     cambiando de valor, y el movimiento ES la información (se ve si subió o
+     bajó). Sigue siendo ease-out y sigue animando solo `transform`, así que no
+     fuerza relayout. */
+  transition: transform 450ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* El grupo arranca abajo del todo (tanque vacío) y app.js lo sube. Así, si
+     el JS falla o los datos no llegan, la pantalla NO muestra un tanque lleno:
+     muestra uno vacío junto a un guión. Un default optimista sería mentir. */
+  transform: translateY(126px);
+}
+
+.tanque__pared {
+  fill: none;
+  stroke: var(--trazo-grafico);
+  stroke-width: 2.5;
+}
+
+/* El módulo del sensor sobre la tapa. Va en color de borde y no en el azul del
+   agua: es el aparato, no el líquido, y darle el color del agua lo haría
+   parecer parte de lo que se mide. */
+.tanque__sensor {
+  fill: var(--trazo-grafico);
+}
+
+/* La salida de abajo. Mismo gris que la pared, por lo mismo: es caño, no agua.
+   Está ahí porque un recipiente con una salida abajo no se puede confundir con
+   una pila, que es exactamente el problema que tenía la primera versión. */
+.tanque__salida {
+  fill: var(--trazo-grafico);
+}
+
+.tanque__transductor {
+  fill: var(--superficie);
+  stroke: var(--trazo-grafico);
+  stroke-width: 1.5;
+}
+
+/* La marca del umbral, por fuera de la pared. Sólida y no punteada: apoyada
+   contra el tanque se lee como "esta altura", y una línea punteada a este
+   tamaño se convierte en tres puntos sueltos. */
+.tanque__umbral {
+  fill: var(--texto-tenue);
+}
+
+.tanque__nota {
+  margin: 0;
+  font-size: var(--txt-xs);
+  color: var(--texto-tenue);
+  text-align: center;
+}
+
+.lectura {
+  min-width: 0;
+}
+
+/* El porcentaje. Tipografía haciendo el trabajo que en otras pantallas hace el
+   color: este número es ~4.25x el cuerpo, así que la jerarquía se sostiene en
+   escala de grises y en una foto borrosa. */
+.lectura__principal {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.08em;
+  line-height: 1.05;
+}
+
+.lectura__numero {
+  font-size: var(--txt-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.lectura__unidad {
+  font-size: var(--txt-xl);
+  font-weight: 600;
+  color: var(--texto-suave);
+}
+
+.lectura__litros {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--txt-lg);
+  color: var(--texto-suave);
+}
+
+.lectura__antiguedad {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--txt-sm);
+  color: var(--texto-tenue);
+}
+
+/* Cuando el dato es viejo o no se puede fechar, los números bajan de jerarquía.
+   El dato no desaparece —sigue siendo el último que se supo— pero deja de
+   mostrarse con la misma confianza visual. Sin esto, en la ventana entre que se
+   cae la conexión y que el dato "envejece" lo suficiente para notarse, la
+   pantalla afirma algo que ya no sabe.
+
+   SE HACE CON UN CAMBIO DE COLOR Y NO CON `opacity`, que era la primera
+   versión. Atenuar con opacidad es el truco obvio y estaba mal: medido, el
+   0.45 original dejaba la línea de litros en 2.10:1 sobre la tarjeta, o sea
+   bastante por debajo del 4.5:1 de WCAG AA. Y no había un valor que sirviera —
+   ni siquiera 0.80 llegaba, y para entonces ya no se notaba que estaba
+   atenuado. Un token de texto que ya está verificado (5.18:1 en claro, 5.04:1
+   en oscuro) baja la jerarquía igual de fuerte, porque el salto desde el casi
+   negro del número grande es enorme, y no deja a nadie afuera. */
+.lectura--dudosa .lectura__numero,
+.lectura--dudosa .lectura__unidad,
+.lectura--dudosa .lectura__litros {
+  color: var(--texto-tenue);
+  transition: color 200ms ease-out;
+}
+
+/* Los dos derivados. El hueco entre ellos es mayor que el hueco interno de
+   cada uno (sp-5 contra sp-1), que es lo que los hace leer como dos cosas y
+   no como cuatro líneas sueltas. */
+.derivados {
+  margin: var(--sp-5) 0 0;
+  padding: var(--sp-4) 0 0;
+  border-top: 1px solid var(--borde);
+  display: flex;
+  gap: var(--sp-6);
+}
+
+.derivado {
+  min-width: 0;
+}
+
+.derivado__rotulo {
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--texto-tenue);
+}
+
+.derivado__valor {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--txt-lg);
+  font-weight: 600;
+}
+
+.salvedad {
+  margin: var(--sp-4) 0 0;
+  font-size: var(--txt-sm);
+  color: var(--texto-tenue);
+  /* Medida de lectura acotada: un párrafo que cruza toda una pantalla de
+     escritorio se vuelve difícil de seguir renglón a renglón. */
+  max-width: 44ch;
+}
+
+/* ==========================================================================
+   CAPA 1.5 — histórico
+   ========================================================================== */
+
+.historico {
+  margin-top: var(--sp-6);
+}
+
+.historico__encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.titulo-seccion {
+  margin: 0;
+  font-size: var(--txt-md);
+  font-weight: 600;
+  color: var(--texto-suave);
+}
+
+.rango {
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+}
+
+.rango__boton {
+  min-height: 32px;
+  padding: 0 var(--sp-3);
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--texto-suave);
+  font: inherit;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  cursor: pointer;
+  /* Propiedades nombradas, nunca `all`: con `all` se animarían también el
+     layout y el anillo de foco, que tienen que aparecer al instante. */
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+/* Los botones del rango son más chicos que el mínimo táctil de 44px a
+   propósito (32px de alto): están en una fila sola, lejos de cualquier otro
+   control, y hacerlos de 44px obligaría a que la píldora ocupe media pantalla.
+   El área tocable se compensa con el padding de la píldora contenedora. */
+.rango__boton:hover {
+  background: var(--fondo);
+  color: var(--texto);
+}
+
+.rango__boton[aria-pressed="true"] {
+  background: var(--agua);
+  color: var(--sobre-agua);
+}
+
+.rango__boton:active {
+  transform: translateY(1px);
+}
+
+.grafico-caja {
+  position: relative;
+  /* Contiene el apilamiento de esta caja: el cartel de "sin datos" se pone
+     encima del canvas con un z-index local de 2, que no puede competir con
+     nada del resto de la página. Es lo que evita la carrera de z-index: 9999
+     la próxima vez que algo tape a algo. */
+  isolation: isolate;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: var(--sp-4);
+  height: 240px;
+}
+
+.grafico-vacio {
+  position: absolute;
+  inset: var(--sp-4);
+  z-index: var(--z-sobre-canvas);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  background: var(--superficie);
+  color: var(--texto-tenue);
+  font-size: var(--txt-sm);
+  text-align: center;
+}
+
+/* El atributo `hidden` del HTML aplica display:none, pero la regla de arriba
+   pone display:flex con más especificidad y le gana. Sin esta línea, el cartel
+   queda visible para siempre. */
+.grafico-vacio[hidden] {
+  display: none;
+}
+
+/* ==========================================================================
+   CAPA 2 — detalle técnico
+   ========================================================================== */
+
+.detalle {
+  margin-top: var(--sp-6);
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.detalle__resumen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  /* Alto mínimo táctil: esto sí se toca con el pulgar y está solo, así que
+     cumple los 44px completos. */
+  min-height: var(--toque-min);
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--texto-suave);
+  border-radius: var(--radio);
+  transition: background-color 150ms ease-out;
+}
+
+.detalle__resumen:hover {
+  background: var(--fondo);
+}
+
+.detalle[open] .detalle__resumen {
+  border-bottom: 1px solid var(--borde);
+  border-radius: var(--radio) var(--radio) 0 0;
+}
+
+/* Pista de estado en el encabezado cerrado. Es lo que evita que alguien tenga
+   que abrir la sección para enterarse de que hay un problema del nodo: si el
+   nodo está sano no dice nada, y si no lo está, lo dice desde afuera. */
+.detalle__pista {
+  font-weight: 600;
+  font-size: var(--txt-xs);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radio-chico);
+  border: 1px solid transparent;
+}
+
+.detalle__pista--mudo { background: var(--mudo-fondo); border-color: var(--mudo-borde); color: var(--mudo-texto); }
+.detalle__pista--nodo { background: var(--nodo-fondo); border-color: var(--nodo-borde); color: var(--nodo-texto); }
+.detalle__pista--ok   { color: var(--texto-tenue); }
+
+.ficha {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4) var(--sp-4);
+  font-size: var(--txt-sm);
+}
+
+.ficha__fila {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--borde);
+}
+
+.ficha__fila:last-child {
+  border-bottom: none;
+}
+
+.ficha dt {
+  color: var(--texto-tenue);
+  flex-shrink: 0;
+}
+
+.ficha dd {
+  margin: 0;
+  text-align: right;
+  color: var(--texto);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Pie
+   ========================================================================== */
+
+.pie {
+  max-width: 46rem;
+  margin: var(--sp-6) auto 0;
+  font-size: var(--txt-xs);
+  color: var(--texto-tenue);
+  max-width: 52ch;
+}
+
+.pie p {
+  margin: 0;
+}
+
+/* ==========================================================================
+   Pantallas grandes
+
+   Único @media de layout de todo el archivo, y agrega en vez de rehacer: el
+   tanque crece, el porcentaje crece, y los derivados se van al costado para
+   aprovechar el ancho. Nada de esto cambia el orden del DOM, así que el
+   recorrido por teclado y por lector de pantalla es el mismo en los dos casos.
+   ========================================================================== */
+
+@media (min-width: 40rem) {
+  :root {
+    --txt-display: 5.5rem;
+  }
+
+  body {
+    padding: var(--sp-6) var(--sp-5) var(--sp-7);
+  }
+
+  .respuesta {
+    padding: var(--sp-6);
+  }
+
+  .tanque__svg {
+    width: 150px;
+  }
+
+  .tanque-y-lectura {
+    gap: var(--sp-7);
+  }
+
+  .grafico-caja {
+    height: 300px;
+  }
+}

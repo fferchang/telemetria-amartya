@@ -1,0 +1,25 @@
+# Secretos y config del entorno. NUNCA se suben.
+# Ojo: ui/config.js SÍ va al repo — no tiene secretos y sin él la página no
+# arranca (ver la cabecera de ese archivo). El .env de acá es para el backend,
+# que sí los va a tener.
+.env
+.env.*
+!.env.example
+
+# Firmware (PlatformIO), cuando se agregue
+.pio/
+include/config.local.h
+
+# Python del backend/tools
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.pytest_cache/
+
+# Sistema operativo y editores
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
