@@ -405,6 +405,7 @@
 
     if (nivel) {
       $("nivel-pct").textContent = Math.round(nivel.pct);
+      $("nivel-pct").classList.remove("lectura__numero--vacio");
       $("nivel-litros").textContent = formatearLitros(nivel.litros);
       $("nivel-unidad").hidden = false;
       $("linea-litros").hidden = false;
@@ -418,6 +419,7 @@
       // unidades sin número, que no informan y dejan la pantalla con cara de
       // formulario a medio llenar.
       $("nivel-pct").textContent = "—";
+      $("nivel-pct").classList.add("lectura__numero--vacio");
       $("nivel-unidad").hidden = true;
       $("linea-litros").hidden = true;
       pintarTanque(0);
@@ -477,9 +479,23 @@
     // simple vista. En una ficha de diagnóstico, donde el dato sirve para
     // cruzar con los logs del nodo, una hora corrida doce horas manda a
     // investigar el momento equivocado.
+    // La fecha y hora exactas, y NADA MÁS. Antes esto agregaba la antigüedad
+    // relativa entre paréntesis —"11/9/2026, 16:42 (recién)"— que ya está
+    // escrita arriba, abajo del número grande. Repetirla acá no informaba nada
+    // y hacía partir el valor en dos renglones, que en la columna derecha del
+    // layout de escritorio es lo que decide si aparece el scroll.
+    //
+    // Sin segundos, además: el nodo publica cada 15 minutos, así que el segundo
+    // exacto no distingue nada.
     $("ficha-ultima").textContent = lectura.relojConfiable
-      ? new Date(lectura.timestampMs).toLocaleString("es-AR", { hour12: false }) +
-        " (" + formatearAntiguedad(antiguedadMs, true) + ")"
+      ? new Date(lectura.timestampMs).toLocaleString("es-AR", {
+          hour12: false,
+          day: "numeric",
+          month: "numeric",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
       : "Fecha no confiable";
 
     $("ficha-distancia").textContent =
@@ -499,8 +515,12 @@
       "fondo " + t.distanciaFondoCm + " cm · lleno " + t.distanciaLlenoCm +
       " cm · " + formatearLitros(t.capacidadLitros) + " l";
 
+    // "Simulado" a secas. El "(sin backend)" que decía antes era una aclaración
+    // de más: la píldora del encabezado ya avisa "Datos simulados" en grande y
+    // en verde, que es donde tiene que estar el aviso para que nadie confunda
+    // una demo con el sistema andando. Acá alcanza con nombrar el origen.
     $("ficha-origen").textContent = window.Datos.esSimulado()
-      ? "SIMULADO (sin backend)"
+      ? "Simulado"
       : "Backend " + cfg.apiUrl;
   }
 
@@ -743,8 +763,46 @@
     });
   });
 
+  /* En escritorio el detalle del nodo arranca ABIERTO.
+
+     El <details> está plegado en el teléfono porque ahí el espacio es el
+     recurso escaso y quien mira quiere una sola respuesta. En una pantalla
+     grande pasa lo contrario: sobra ancho, la ficha entra al lado del gráfico
+     sin empujar nada, y dejarla cerrada obliga a un click para ver información
+     que ya tenía lugar donde mostrarse.
+
+     La condición es la MISMA del @media de escritorio de style.css (72rem de
+     ancho y 48rem de alto), y están acopladas a propósito: si esto se abriera
+     sin que el grid de dos columnas esté activo, la ficha empujaría todo hacia
+     abajo y aparecería justo el scroll que ese layout evita. Si se cambia una,
+     hay que cambiar la otra.
+
+     `tocadoAMano` respeta al usuario: si abrió o cerró la ficha a propósito, un
+     cambio de tamaño de ventana no se la vuelve a mover en la cara.
+
+     Se escucha el CLICK sobre el <summary> y no el evento `toggle` del
+     <details>, que era la primera versión y estaba mal: abrirlo por código
+     también dispara `toggle`, así que la propia sincronización se marcaba como
+     si la hubiera hecho el usuario y la perilla no servía para nada. El click
+     sobre el summary, en cambio, solo ocurre si alguien lo activó — y cubre
+     también el teclado, porque activar un <summary> con Enter o Espacio
+     dispara un click sintético. */
+  const esEscritorio = window.matchMedia("(min-width: 72rem) and (min-height: 48rem)");
+  let tocadoAMano = false;
+
+  document
+    .querySelector(".detalle__resumen")
+    .addEventListener("click", () => { tocadoAMano = true; });
+
+  function sincronizarDetalle() {
+    if (!tocadoAMano) $("detalle").open = esEscritorio.matches;
+  }
+
+  esEscritorio.addEventListener("change", sincronizarDetalle);
+
   // --- Puesta en marcha ---
   $("nombre-sitio").textContent = cfg.sitio;
+  sincronizarDetalle();
   pintarUmbral();
   refrescar();
   recargarHistorico();

@@ -12,7 +12,7 @@
        mira con sol de frente y el fondo claro gana. -->
   <meta name="color-scheme" content="light dark">
 
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -259,8 +259,14 @@
       <span class="detalle__pista" id="detalle-pista"></span>
     </summary>
 
+    <!-- El orden de las filas está elegido para que en escritorio, donde la
+         ficha se parte en DOS COLUMNAS, las cuentas cierren: las dos filas de
+         texto largo (el estado y la geometría) ocupan el ancho completo y van
+         una primera y otra última, y entre las dos quedan SEIS filas cortas,
+         que es un número par y llena tres renglones justos. Con una fila de
+         más o de menos quedaría una suelta en la columna izquierda. -->
     <dl class="ficha">
-      <div class="ficha__fila">
+      <div class="ficha__fila ficha__fila--ancha">
         <dt>Estado del nodo</dt>
         <dd id="ficha-estado">—</dd>
       </div>
@@ -289,12 +295,15 @@
         <dd id="ficha-senal">—</dd>
       </div>
       <div class="ficha__fila">
-        <dt>Geometría del tanque</dt>
-        <dd id="ficha-geometria">—</dd>
-      </div>
-      <div class="ficha__fila">
         <dt>Origen de los datos</dt>
         <dd id="ficha-origen">—</dd>
+      </div>
+      <!-- Última y a lo ancho: es el valor más largo de la ficha ("fondo 180 cm
+           · lleno 25 cm · 5.000 l") y en media columna se parte en tres
+           renglones, desalineando toda la fila. -->
+      <div class="ficha__fila ficha__fila--ancha">
+        <dt>Geometría del tanque</dt>
+        <dd id="ficha-geometria">—</dd>
       </div>
     </dl>
   </details>
@@ -317,8 +326,8 @@
      config.js viejo de su caché, la página calcula el nivel con la geometría
      anterior del tanque y muestra un número equivocado con total confianza.
      Al cambiar cualquier valor de config.js hay que subir este número. -->
-<script src="config.js?v=5"></script>
+<script src="config.js?v=7"></script>
 <script src="datos.js?v=3"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

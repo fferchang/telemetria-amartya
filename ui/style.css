@@ -459,6 +459,18 @@ body {
   letter-spacing: -0.03em;
 }
 
+/* El guión de "no hay dato", con el peso y el color de un vacío.
+
+   Con el negro y la negrita del número, una raya de 68px no se lee como
+   ausencia: se lee como una barra de censura tapando algo. El gris tenue y el
+   trazo fino dicen lo mismo que dice el espacio en blanco de un formulario sin
+   completar. Sigue cumpliendo AA (5.18:1 en claro, 5.04:1 en oscuro) y a este
+   tamaño el mínimo exigido es apenas 3:1. */
+.lectura__numero--vacio {
+  font-weight: 300;
+  color: var(--texto-tenue);
+}
+
 .lectura__unidad {
   font-size: var(--txt-xl);
   font-weight: 600;
@@ -725,11 +737,13 @@ body {
    ========================================================================== */
 
 .pie {
-  max-width: 46rem;
+  /* 52ch y no 46rem: la medida que importa para un párrafo es cuántos
+     caracteres entran por renglón, no cuántos píxeles mide la caja. (Había un
+     max-width declarado dos veces acá, uno pisando al otro.) */
+  max-width: 52ch;
   margin: var(--sp-6) auto 0;
   font-size: var(--txt-xs);
   color: var(--texto-tenue);
-  max-width: 52ch;
 }
 
 .pie p {
@@ -737,12 +751,12 @@ body {
 }
 
 /* ==========================================================================
-   Pantallas grandes
+   Pantallas intermedias (tablet, teléfono apaisado)
 
-   Único @media de layout de todo el archivo, y agrega en vez de rehacer: el
-   tanque crece, el porcentaje crece, y los derivados se van al costado para
-   aprovechar el ancho. Nada de esto cambia el orden del DOM, así que el
-   recorrido por teclado y por lector de pantalla es el mismo en los dos casos.
+   Agrega en vez de rehacer: el tanque crece y el porcentaje crece para
+   aprovechar el ancho. Sigue siendo una columna. Nada de esto cambia el orden
+   del DOM, así que el recorrido por teclado y por lector de pantalla es el
+   mismo en los dos casos.
    ========================================================================== */
 
 @media (min-width: 40rem) {
@@ -768,5 +782,143 @@ body {
 
   .grafico-caja {
     height: 300px;
+  }
+}
+
+/* ==========================================================================
+   Escritorio — todo en una pantalla, sin scrollear
+
+   En la PC no hay razón para apilar: sobra ancho y falta alto. Las tres
+   secciones se reparten en dos columnas y el detalle del nodo se abre solo,
+   así toda la información entra de una y no hay que ir a buscar nada.
+
+   LA CONDICIÓN DE ALTO NO ES UN CAPRICHO. Este bloque solo se activa si además
+   del ancho hay al menos 48rem (768px) de alto disponible. Sin esa condición,
+   una ventana ancha y baja —un navegador a media pantalla, un monitor 16:9 con
+   muchas barras— recibiría un layout diseñado para no scrollear que igual no
+   entra, y el resultado sería peor que la columna: todo apretado Y con scroll.
+   Cuando no entra, es mejor apilar y dejar scrollear.
+
+   El orden del DOM no cambia (respuesta, gráfico, detalle), así que el
+   recorrido por teclado sigue siendo el mismo que en el teléfono. Es la razón
+   de usar grid y no reordenar el HTML.
+   ========================================================================== */
+
+@media (min-width: 72rem) and (min-height: 48rem) {
+  /* El encabezado y el pie tienen que crecer JUNTO con el contenido. Los tres
+     están centrados con `margin: 0 auto`, así que si el del medio pasa a 74rem
+     y los otros dos se quedan en 46rem, los tres quedan centrados sobre ejes
+     distintos: el título aparece metido hacia adentro y la píldora de conexión
+     flotando lejos del borde derecho de las tarjetas. */
+  .encabezado {
+    max-width: 74rem;
+  }
+
+  .pie {
+    max-width: 74rem;
+  }
+
+  /* La caja se ensancha para alinear con la grilla, pero el párrafo NO: un
+     renglón de 74rem de ancho es imposible de seguir con el ojo. El tope de
+     medida se muda al <p>. */
+  .pie p {
+    max-width: 52ch;
+  }
+
+  .contenido {
+    max-width: 74rem;
+    display: grid;
+    /* La columna de la izquierda un poco más angosta: adentro tiene el número
+       grande, que ya ocupa mucho por sí solo, mientras que el gráfico de la
+       derecha gana de verdad con cada píxel de ancho. */
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    grid-template-rows: auto auto;
+    gap: var(--sp-5);
+    /* Que cada tarjeta mida lo que necesita en vez de estirarse al alto de la
+       fila: una ficha de ocho renglones estirada deja un hueco raro abajo. */
+    align-items: start;
+  }
+
+  /* La respuesta ocupa la columna izquierda entera. Es la pieza más importante
+     de la pantalla y acá se lee de un vistazo, sin competir con el gráfico. */
+  .respuesta {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .historico {
+    grid-column: 2;
+    grid-row: 1;
+    /* El margin-top de la versión apilada sobra: acá el aire lo pone el `gap`
+       del grid. Si quedara, se sumarían los dos. */
+    margin-top: 0;
+  }
+
+  .detalle {
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: 0;
+  }
+
+  /* El gráfico es la pieza elástica del layout, y por eso su alto se ata al
+     viewport en vez de fijarse en píxeles.
+
+     El razonamiento: medida la pantalla, la columna derecha (gráfico + ficha)
+     es la más alta de las dos —643px contra 516px de la izquierda—, así que es
+     la que decide si hay scroll o no. De todo lo que hay en esa columna, el
+     único elemento que puede ceder alto sin perder información es el gráfico:
+     la ficha tiene los renglones que tiene y el veredicto dice lo que dice.
+
+     `clamp()` y no un valor fijo porque "una ventana de PC" no es un tamaño:
+     con un alto fijo, calibrarlo para 800px de alto lo deja desperdiciando
+     espacio en un monitor grande y desbordando en una ventana a media
+     pantalla. El mínimo de 190px es el punto donde un gráfico de línea deja de
+     ser legible; el máximo de 300px es donde deja de ganar algo por ser más
+     alto. */
+  .grafico-caja {
+    height: clamp(190px, 26vh, 300px);
+  }
+
+  /* La ficha pasa a dos columnas. Ocho renglones apilados son ~290px de alto y
+     no entran abajo del gráfico; en dos columnas son cuatro renglones. */
+  .ficha {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: var(--sp-5);
+    padding-top: var(--sp-3);
+  }
+
+  .ficha__fila {
+    padding: var(--sp-2) 0;
+    /* El rótulo no envuelve nunca; si falta lugar, el que se ajusta es el
+       valor. Un rótulo partido en dos renglones ("Origen de los / datos")
+       agrega alto sin agregar información, y en esta columna cada renglón de
+       más es el que decide si aparece el scroll. */
+    white-space: nowrap;
+  }
+
+  .ficha__fila dd {
+    white-space: normal;
+  }
+
+  /* Las dos filas de texto largo (estado y geometría) toman el ancho completo.
+     Están puestas primera y última justamente para que las seis cortas del
+     medio llenen tres renglones parejos — ver el comentario del <dl> en el
+     HTML. Como la última fila del DOM vuelve a ser una fila entera, el
+     `:last-child` de la versión de una columna sigue siendo la regla correcta
+     para sacarle el borde de abajo y no hace falta nada más acá. */
+  .ficha__fila--ancha {
+    grid-column: 1 / -1;
+  }
+
+  /* Menos aire abajo que en la versión apilada. Ahí el padding generoso al
+     final del scroll es cómodo; acá, donde el objetivo es que todo entre en la
+     ventana, son 24px que se le sacan al gráfico sin que nadie los extrañe. */
+  body {
+    padding-bottom: var(--sp-5);
+  }
+
+  .pie {
+    margin-top: var(--sp-4);
   }
 }

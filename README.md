@@ -73,12 +73,31 @@ sótano. Un fondo oscuro al sol es un espejo.
 1. **La respuesta.** Una frase que dice qué pasa ("Alcanza para unos 9 días"),
    el porcentaje grande, los litros, y la fecha estimada en que se quedaría sin
    agua. Sin jerga y sin ninguna unidad que haya que interpretar.
-2. **El detalle del nodo**, plegado. La distancia cruda del sensor, el estado
-   del reloj, la señal WiFi, la geometría configurada. Quien vino a saber si le
-   queda agua no lo necesita; quien vino a arreglar el nodo lo tiene todo junto.
+2. **El detalle del nodo.** La distancia cruda del sensor, el estado del reloj,
+   la señal WiFi, la geometría configurada. Quien vino a saber si le queda agua
+   no lo necesita; quien vino a arreglar el nodo lo tiene todo junto.
 
-El gráfico queda entre las dos, sin plegar: "¿viene bajando rápido?" se la
-pregunta cualquiera, no solo el técnico.
+El gráfico queda entre las dos: "¿viene bajando rápido?" se la pregunta
+cualquiera, no solo el técnico.
+
+### En el celular se apila; en la PC entra todo junto
+
+En el teléfono las tres secciones van una abajo de la otra y el detalle del nodo
+arranca plegado, porque ahí el espacio es el recurso escaso.
+
+En una pantalla de PC pasa lo contrario —sobra ancho y falta alto—, así que a
+partir de **1152×768** el layout pasa a dos columnas, el detalle se abre solo y
+**todo entra en una ventana sin scrollear**. Verificado midiendo el borde real
+del contenido: sobran 40px en 1152×768 y en 1366×768, 138px en 1440×900 y 271px
+en 1920×1080. Con el sensor caído, que es el caso de textos más largos, sobran
+25px en el peor tamaño.
+
+Por debajo de ese umbral vuelve a apilarse a propósito: una ventana ancha pero
+baja recibiría un layout pensado para no scrollear que igual no entra, y el
+resultado sería peor que la columna — todo apretado **y** con scroll.
+
+El orden del DOM es el mismo en los dos casos (es un `grid`, no un reordenamiento
+del HTML), así que el recorrido por teclado y por lector de pantalla no cambia.
 
 ### El estado tiene DOS ejes, no uno
 

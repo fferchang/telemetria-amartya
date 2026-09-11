@@ -48,6 +48,27 @@ backend ni firmware ni hardware todavía.
 - **Tema claro por default, oscuro como variante** — al revés que Casa Rosada, y
   a propósito: aquel vive en un sótano y en una pantalla de pared, este se mira
   con sol de frente, donde un fondo oscuro es un espejo.
+- **En escritorio, todo entra en una ventana sin scrollear.** A partir de
+  **1152×768** (`72rem × 48rem`) el layout pasa a dos columnas y el detalle del
+  nodo se abre solo. Por debajo de ese umbral se apila a propósito: una ventana
+  ancha pero baja recibiría un layout pensado para no scrollear que igual no
+  entra, y quedaría todo apretado **y** con scroll.
+
+  **El umbral está escrito en dos lugares y están acoplados**: el `@media` de
+  `ui/style.css` y el `matchMedia` de `ui/app.js` que abre el `<details>`. Si se
+  cambia uno hay que cambiar el otro, o la ficha se abre sin el grid de dos
+  columnas y empuja todo hacia abajo.
+
+  El alto del gráfico es `clamp(190px, 26vh, 300px)` y es la pieza elástica que
+  hace que esto funcione en distintos tamaños: medida la pantalla, la columna
+  derecha (gráfico + ficha) es la más alta, y de todo lo que hay ahí el gráfico
+  es lo único que puede ceder alto sin perder información.
+
+  Margen verificado midiendo el borde real del contenido (`.pie.bottom +
+  padding-bottom`, no `scrollHeight`, que se satura en el alto de la ventana):
+  40px en 1152×768 y 1366×768, 138px en 1440×900, 271px en 1920×1080; 25px en el
+  peor caso, que es sensor caído a 1152×768. **Si se agrega una fila a la ficha
+  o un renglón al veredicto, hay que volver a medir.**
 - **`ui/config.js` SÍ se versiona.** No tiene secretos (es un sitio estático, no
   hay dónde esconder nada) y sin él la página no arranca, así que versionarlo es
   lo que hace que el repo recién clonado se abra y se vea andando. La contra es
