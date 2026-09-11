@@ -26,6 +26,21 @@ services:
       # default dejaria el endpoint de escritura abierto y nadie se enteraria.
       AMARTYA_TOKEN_NODO: ${AMARTYA_TOKEN_NODO:?falta AMARTYA_TOKEN_NODO en .env}
       AMARTYA_DB: /datos/amartya.db
+
+      # Hay nginx adelante, asi que la API puede creerle al header X-Real-IP
+      # para saber quien es el cliente de verdad (si no, el limitador de tasa
+      # cuenta a todo el mundo en una sola bolsa, porque todas las requests
+      # llegan con la IP del proxy). Es seguro creerle SOLO porque este servicio
+      # no publica ningun puerto: lo unico que le puede hablar es nginx, que
+      # sobrescribe ese header.
+      AMARTYA_DETRAS_DE_PROXY: "true"
+
+      # El resto son opcionales y tienen defaults razonables, pero se pasan
+      # igual: si no estuvieran aca, ponerlas en el .env no haria nada dentro
+      # del contenedor y se perderia un buen rato entendiendo por que.
+      AMARTYA_MAX_POST_POR_MINUTO: ${AMARTYA_MAX_POST_POR_MINUTO:-6}
+      AMARTYA_MAX_PUNTOS: ${AMARTYA_MAX_PUNTOS:-700}
+      AMARTYA_MAX_HORAS: ${AMARTYA_MAX_HORAS:-8760}
     volumes:
       # Volumen nombrado y no un bind mount: sobrevive a `docker compose down`
       # y a cada rebuild de la imagen. Aca vive TODO el historico.
@@ -40,7 +55,17 @@ services:
   web:
     image: nginx:alpine
     ports:
-      - "8080:80"
+      # 8090 y NO 8080, que es lo primero que uno pone.
+      #
+      # El proyecto hermano Casa Rosada corre en la misma maquina y su compose
+      # ya publica el dashboard en 8080 (ademas de 3000 para Grafana, 8086 para
+      # InfluxDB y 1883/9001 para Mosquitto). Con los dos stacks levantados, el
+      # segundo falla con un "port is already allocated" que no dice de quien es
+      # el puerto, y se pierde un rato entendiendo por que.
+      #
+      # Se puede cambiar sin editar este archivo, poniendo AMARTYA_PUERTO_WEB en
+      # el .env — util si el 8090 tambien resulta estar ocupado.
+      - "${AMARTYA_PUERTO_WEB:-8090}:80"
     volumes:
       # La interfaz se monta de solo lectura desde el repo. No hay build: son
       # archivos estaticos y se sirven tal cual, asi que actualizar la pantalla

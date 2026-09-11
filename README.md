@@ -4,8 +4,9 @@ Monitoreo del nivel de agua de una cisterna con un ESP32 y un sensor
 ultrasónico montado en la tapa. Parte de la familia GridWire (junto con
 GridWire industrial y Casa Rosada), con el mismo patrón `ISensor`/`IPublisher`.
 
-**Estado actual: interfaz y backend.** Las dos piezas andan y están probadas
-juntas. Falta el firmware del nodo y el hardware.
+**Estado actual: interfaz, backend y empaquetado.** Las tres piezas andan y
+están probadas juntas, incluido el stack de Docker. Falta el firmware del nodo y
+el hardware.
 
 ---
 
@@ -86,6 +87,37 @@ sirviendo el archivo viejo de su caché y parece que el cambio no hizo nada.
 
 Los últimos tres son fallas del **nodo**, no del agua, y se muestran distinto a
 propósito — ver más abajo.
+
+## Con Docker
+
+Es la forma en que va a correr en el servidor: la API en un contenedor y nginx
+sirviendo la interfaz y haciendo de proxy hacia `/api`.
+
+```bash
+docker compose up -d --build
+```
+
+Queda en <http://127.0.0.1:8090>. Necesita el `.env` con `AMARTYA_TOKEN_NODO`
+(ver `.env.example`); el compose se niega a levantar si falta.
+
+**Verificado de punta a punta**: imagen construida, API *healthy*, la interfaz
+servida por nginx, el proxy de `/api` llegando a Flask con el prefijo entero, la
+autenticación funcionando a través del proxy (401 sin token, 201 con), el
+histórico comprimido de 42 KB a 4,4 KB por gzip, y la base sobreviviendo tanto a
+un recreate del contenedor como a un `docker compose down`.
+
+> **El puerto es 8090 y no 8080 a propósito.** Casa Rosada corre en la misma
+> máquina y su compose ya publica el dashboard en 8080 (además de 3000, 8086,
+> 1883 y 9001). Con los dos stacks arriba, el segundo falla con un *"port is
+> already allocated"* que no dice de quién es el puerto. Si 8090 también está
+> ocupado, se cambia con `AMARTYA_PUERTO_WEB` en el `.env`, sin tocar el compose.
+
+**El límite de tasa real es el configurado por la cantidad de workers.** El
+contador vive en memoria y cada worker de gunicorn lleva el suyo: medido contra
+el contenedor, con el límite en 6 la API aceptó 12 por minuto antes de empezar a
+devolver 429. Se deja así porque 12 sigue siendo 180 veces el ritmo del nodo, y
+compartir el contador entre workers pediría Redis o una tabla — mucha maquinaria
+para una red de seguridad cuya defensa de verdad es el token.
 
 ## Verificaciones
 
@@ -307,11 +339,6 @@ docker-compose.yml   API + nginx
 
 ## Lo que falta
 
-- [ ] **Probar el empaquetado de Docker.** `Dockerfile`, `docker-compose.yml` y
-      `nginx/default.conf` están escritos pero **no verificados**: se hicieron
-      sin poder construirlos, porque el daemon de Docker no estaba corriendo en
-      la máquina de desarrollo. Lo de adentro sí está probado. Antes de confiar
-      en ellos: `docker compose up --build` y ver que la API quede *healthy*.
 - [ ] El firmware del nodo. Se adapta de Casa Rosada: cambia el driver del
       sensor y el publisher (HTTP en vez de MQTT), el resto de
       `lib/Telemetria/` sirve igual. El token va en `include/config.local.h`.

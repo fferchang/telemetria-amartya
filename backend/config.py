@@ -89,6 +89,18 @@ def cargar(entorno=None):
         # publica cada 15 minutos, asi que 6 por minuto ya es sesenta veces mas
         # de lo normal: cualquier cosa por encima es un bucle de reintentos mal
         # hecho o alguien probando.
+        #
+        # OJO CON EL NUMERO EFECTIVO EN PRODUCCION: el contador vive en memoria
+        # y cada worker de gunicorn lleva el suyo, asi que el limite real es
+        # este valor POR LA CANTIDAD DE WORKERS. Medido contra el contenedor con
+        # los 2 workers del Dockerfile: con esto en 6, la API acepto 12 por
+        # minuto antes de empezar a devolver 429.
+        #
+        # Se deja asi y no se compensa dividiendo, porque el numero exacto no
+        # importa a esta escala —12 sigue siendo 180 veces el ritmo del nodo— y
+        # compartir el contador entre workers pediria Redis o una tabla, que es
+        # mucha maquinaria para un tope que es una red de seguridad. La defensa
+        # de verdad contra el abuso es el token.
         "max_post_por_minuto": _entero(entorno, "AMARTYA_MAX_POST_POR_MINUTO", 6),
 
         # Tope de puntos que devuelve /historico. Por encima de esto se
@@ -100,4 +112,21 @@ def cargar(entorno=None):
 
         # Ventana maxima que se puede pedir, en horas. Un ano.
         "max_horas_historico": _entero(entorno, "AMARTYA_MAX_HORAS", 8760),
+
+        # ¿Hay un proxy adelante (nginx) que setea X-Real-IP?
+        #
+        # Importa para el limitador de tasa. Detras de un proxy, todas las
+        # requests llegan con la IP del proxy como origen, asi que el limitador
+        # cuenta a todo el mundo en una sola bolsa: un solo cliente haciendo
+        # ruido deja afuera al nodo de verdad.
+        #
+        # POR QUE ES UN FLAG Y NO SE DETECTA SOLO: el header lo puede mandar
+        # cualquiera. Si la API se creyera siempre lo que dice X-Real-IP,
+        # alguien que le pegue directo podria cambiarlo en cada request y
+        # saltearse el limite entero. Confiar en el header solo esta bien cuando
+        # se sabe que hay un proxy adelante que lo SOBRESCRIBE y que la API no
+        # es alcanzable por otro lado — que es exactamente el caso del
+        # docker-compose, donde el servicio `api` no publica ningun puerto.
+        "detras_de_proxy": (entorno.get("AMARTYA_DETRAS_DE_PROXY") or "").strip().lower()
+                           in ("1", "true", "si", "sí", "yes"),
     }

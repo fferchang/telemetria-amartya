@@ -14,9 +14,8 @@ final, desde el celular, al aire libre, que solo quiere saber si le queda agua;
 y quien mantiene el equipo, que necesita saber si el nodo está vivo. La pantalla
 está en dos capas por eso.
 
-**Estado al 11/09/2026:** interfaz y backend, probados juntos de punta a punta.
-Falta el firmware y el hardware. El empaquetado de Docker está escrito pero sin
-verificar (el daemon no corría en la máquina de desarrollo).
+**Estado al 11/09/2026:** interfaz, backend y empaquetado de Docker, los tres
+probados de punta a punta. Falta el firmware y el hardware.
 
 ## Decisiones de arquitectura ya cerradas
 
@@ -169,6 +168,31 @@ Acá se hizo bien desde el arranque; si allá se arregla, el criterio es este.
   consumo— y por eso no se cancela solo. Ahora la ventana se calcula por TIEMPO
   (3.5 h) y no en cantidad de puntos, así se ajusta sola si cambia el ciclo de
   publicación del nodo.
+- **`VOLUME` en el Dockerfile antes del `chown` tiraba el `chown`.** Docker
+  descarta cualquier cambio hecho a una ruta DESPUÉS de declararla como volumen,
+  así que `/datos` quedaba de root y el proceso (uid 10001) no podía escribir su
+  propia base. Se sacó la instrucción `VOLUME` —el volumen lo declara el compose,
+  que es donde se ve— y el `mkdir`+`chown` quedó antes de cambiar de usuario.
+- **El puerto 8080 choca con Casa Rosada.** Su compose ya publica el dashboard
+  ahí (además de 3000, 8086, 1883 y 9001), y los dos proyectos viven en la misma
+  máquina. Amartya usa **8090**, configurable con `AMARTYA_PUERTO_WEB`. El error
+  de Docker (*"port is already allocated"*) no dice de quién es el puerto.
+- **nginx mandaba `X-Real-IP` y Flask nunca lo leía.** El comentario del nginx
+  decía que servía para el límite de tasa, pero `request.remote_addr` detrás de
+  un proxy es la IP del proxy, así que el limitador contaba a todos en una sola
+  bolsa: un cliente haciendo ruido dejaba afuera al nodo. Ahora se lee, pero
+  **solo si `AMARTYA_DETRAS_DE_PROXY` está en true** — el header lo puede
+  falsificar cualquiera que le pegue directo a la API, y creerle siempre volvería
+  al limitador decorativo. Es seguro creerle en el compose porque el servicio
+  `api` no publica ningún puerto.
+- **El límite de tasa efectivo es el configurado × la cantidad de workers.** El
+  contador es en memoria y cada worker de gunicorn lleva el suyo. Medido contra
+  el contenedor: con el límite en 6, la API aceptó 12 por minuto. Se deja así (12
+  sigue siendo 180× el ritmo del nodo); compartirlo pediría Redis.
+- **La fixture de los tests armaba un diccionario de config paralelo.** Agregar
+  una clave nueva con su default rompió 17 tests con un `KeyError` que no tenía
+  nada que ver con lo que probaban. Ahora `config_de_prueba()` llama al
+  `cargar()` real con un entorno falso, así cualquier clave nueva llega sola.
 - **El dibujo del tanque se leía como una PILA.** Un rectángulo vertical angosto
   con una tapita centrada arriba es el icono de una batería, con el agravante de
   que una pila al 62% significa lo mismo que un tanque al 62%, así que el error
@@ -197,11 +221,11 @@ Dos cosas que ese script decide y conviene no revertir sin pensarlo:
 
 ## Pendiente
 
-- [ ] **Verificar el empaquetado de Docker.** `backend/Dockerfile`,
-      `docker-compose.yml` y `nginx/default.conf` están escritos con cuidado
-      pero **nunca se construyeron**: el daemon de Docker no corría en la
-      máquina de desarrollo. Correr `docker compose up --build` y comprobar que
-      la API quede *healthy* antes de contar con ellos.
+- [x] Empaquetado de Docker **verificado**: imagen construida, API *healthy*,
+      nginx sirviendo la interfaz, el proxy de `/api` llegando a Flask con el
+      prefijo entero, la autenticación funcionando a través del proxy, gzip
+      bajando el histórico de 42 KB a 4,4 KB, y la base sobreviviendo a un
+      recreate y a un `docker compose down`. Corre en **8090**, no en 8080.
 - [ ] Firmware, adaptando `lib/Telemetria/` de Casa Rosada: cambia el driver del
       sensor y el publisher (HTTP en vez de MQTT). El token va en
       `include/config.local.h` y viaja como `Authorization: Bearer <token>`.

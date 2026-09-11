@@ -27,6 +27,28 @@ import tiempo
 TOKEN = "token-de-prueba-largo-y-aburrido"
 
 
+def config_de_prueba(tmp_path, **extra):
+    """Config para los tests, armada con el `cargar()` de verdad.
+
+    Podria ser un diccionario escrito a mano, y esa fue la primera version — el
+    problema es que queda como una copia paralela de la config real que hay que
+    acordarse de actualizar. Agregar una clave nueva con su default (paso
+    exactamente eso con `detras_de_proxy`) rompia diecisiete tests con un
+    `KeyError` que no tenia nada que ver con lo que estaban probando.
+
+    Pasando un entorno falso a `cargar()`, cualquier clave nueva llega sola con
+    su default, y de paso los tests ejercitan el mismo camino de configuracion
+    que corre en produccion.
+    """
+    entorno = {"AMARTYA_TOKEN_NODO": TOKEN}
+    entorno.update(extra)
+
+    cfg = config_mod.cargar(entorno)
+    # La base no sale del entorno: cada test necesita la suya.
+    cfg["base_datos"] = str(tmp_path / "prueba.db")
+    return cfg
+
+
 @pytest.fixture
 def cliente(tmp_path):
     """Una app con base propia y token conocido.
@@ -35,14 +57,7 @@ def cliente(tmp_path):
     datos de la anterior. Sin eso, el test de "base vacia" pasaria o fallaria
     segun el orden en que corran.
     """
-    cfg = {
-        "token_nodo": TOKEN,
-        "base_datos": str(tmp_path / "prueba.db"),
-        "max_post_por_minuto": 6,
-        "max_puntos_historico": 700,
-        "max_horas_historico": 8760,
-    }
-    aplicacion = app_mod.crear_app(cfg, servir_ui=False)
+    aplicacion = app_mod.crear_app(config_de_prueba(tmp_path), servir_ui=False)
     aplicacion.config["TESTING"] = True
     return aplicacion.test_client()
 
@@ -142,6 +157,62 @@ def test_demasiados_posts_seguidos_dan_429(cliente):
     for i in range(6):
         assert publicar(cliente, timestamp_unix=ahora - i).status_code == 201
     assert publicar(cliente, timestamp_unix=ahora - 99).status_code == 429
+
+
+def _publicar_desde(cliente, ip, ts):
+    """POST fingiendo venir de `ip` via el header que pone nginx."""
+    return cliente.post(
+        "/api/lectura",
+        json={"node_id": "cisterna01", "timestamp_unix": ts,
+              "valid": True, "distance_cm": 84.0},
+        headers={"Authorization": "Bearer " + TOKEN, "X-Real-IP": ip},
+    )
+
+
+def test_detras_de_proxy_el_limite_es_por_cliente_real(tmp_path):
+    """Con nginx adelante, el limite tiene que contar por cliente y no en bolsa.
+
+    Sin esto, todas las requests llegan con la IP del proxy y el limitador mete
+    a todo el mundo en un solo contador: un cliente haciendo ruido deja afuera
+    al nodo de verdad, que es justo al unico que no hay que dejar afuera.
+    """
+    cfg = config_de_prueba(tmp_path, AMARTYA_MAX_POST_POR_MINUTO="3",
+                           AMARTYA_DETRAS_DE_PROXY="true")
+    c = app_mod.crear_app(cfg, servir_ui=False).test_client()
+    ahora = int(time.time())
+
+    # Un cliente quema su cuota entera...
+    for i in range(3):
+        assert _publicar_desde(c, "10.0.0.9", ahora - i).status_code == 201
+    assert _publicar_desde(c, "10.0.0.9", ahora - 50).status_code == 429
+
+    # ...y otro sigue pudiendo publicar.
+    assert _publicar_desde(c, "10.0.0.7", ahora - 60).status_code == 201
+
+
+def test_sin_proxy_el_header_no_se_cree(tmp_path):
+    """X-Real-IP lo puede mandar cualquiera.
+
+    Si la API se lo creyera siempre, alguien que le pegue directo cambiaria el
+    header en cada request y se saltearia el limite entero. Solo se mira cuando
+    la config dice que hay un proxy adelante que lo sobrescribe.
+    """
+    cfg = config_de_prueba(tmp_path, AMARTYA_MAX_POST_POR_MINUTO="3")
+    c = app_mod.crear_app(cfg, servir_ui=False).test_client()
+    ahora = int(time.time())
+
+    # Cambiando el header en cada request, el limite tiene que frenarlo igual.
+    for i in range(3):
+        assert _publicar_desde(c, "10.0.0.%d" % i, ahora - i).status_code == 201
+    assert _publicar_desde(c, "10.0.0.99", ahora - 50).status_code == 429
+
+
+def test_la_config_lee_el_flag_de_proxy():
+    base = {"AMARTYA_TOKEN_NODO": TOKEN}
+    assert config_mod.cargar(base)["detras_de_proxy"] is False
+    assert config_mod.cargar({**base, "AMARTYA_DETRAS_DE_PROXY": "true"})["detras_de_proxy"] is True
+    assert config_mod.cargar({**base, "AMARTYA_DETRAS_DE_PROXY": "1"})["detras_de_proxy"] is True
+    assert config_mod.cargar({**base, "AMARTYA_DETRAS_DE_PROXY": "no"})["detras_de_proxy"] is False
 
 
 # ===========================================================================

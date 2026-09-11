@@ -34,10 +34,22 @@ COPY . .
 # entero, en silencio. Es exactamente el riesgo del punto 3 de la lista de
 # preguntas de docs/DESPLIEGUE.md.
 ENV AMARTYA_DB=/datos/amartya.db
-VOLUME ["/datos"]
 
 # No correr como root. Si alguna vez hay una vulnerabilidad que permita ejecutar
 # algo dentro del contenedor, que sea con los permisos minimos.
+#
+# El mkdir y el chown de /datos TIENEN que pasar aca, y no despues de una
+# instruccion VOLUME. Docker descarta cualquier cambio que se le haga a una ruta
+# DESPUES de declararla como volumen, asi que la version anterior de este
+# archivo —que declaraba `VOLUME ["/datos"]` antes de este RUN— dejaba el
+# directorio propiedad de root, y el proceso (uid 10001) no podia escribir su
+# propia base. Cuando docker compose crea el volumen nombrado por primera vez,
+# copia el contenido Y los permisos que tenga el directorio en la imagen, asi
+# que con este orden el volumen nace con el dueño correcto.
+#
+# Tampoco hay `VOLUME` declarado: el volumen lo define docker-compose.yml, que
+# es donde se ve, y una instruccion VOLUME en el Dockerfile solo agrega la
+# trampa de arriba sin aportar nada.
 RUN useradd --create-home --uid 10001 amartya \
     && mkdir -p /datos \
     && chown -R amartya:amartya /datos /app

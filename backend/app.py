@@ -270,6 +270,25 @@ def crear_app(cfg=None, servir_ui=True):
 
         return envoltorio
 
+    def ip_del_cliente():
+        """Quien esta haciendo el pedido, para contarlo en el limitador.
+
+        Detras de nginx, `request.remote_addr` es la IP DEL PROXY para todas las
+        requests, asi que el limitador contaria a todo el mundo en una sola
+        bolsa y un solo cliente haciendo ruido dejaria afuera al nodo de verdad.
+        nginx manda la IP real en X-Real-IP.
+
+        Ese header solo se mira si la config dice que hay un proxy adelante (ver
+        `detras_de_proxy` en config.py): el header lo puede falsificar cualquiera
+        que le pegue directo a la API, asi que creerle siempre convertiria al
+        limitador en decorativo.
+        """
+        if app.config["AMARTYA"]["detras_de_proxy"]:
+            real = request.headers.get("X-Real-IP")
+            if real:
+                return real.strip()
+        return request.remote_addr or "desconocido"
+
     def permitir_post(clave):
         """Limitador de tasa: ¿cuantos POST hizo esta clave en el ultimo minuto?
 
@@ -303,7 +322,7 @@ def crear_app(cfg=None, servir_ui=True):
         # El limite se cuenta por IP y no por node_id: el node_id sale del
         # cuerpo, o sea que lo elige quien llama, y alguien que quisiera
         # saturar la base podria mandar uno distinto cada vez.
-        if not permitir_post(request.remote_addr or "desconocido"):
+        if not permitir_post(ip_del_cliente()):
             return jsonify({"error": "demasiadas lecturas seguidas"}), 429
 
         # silent=True para que un cuerpo que no es JSON devuelva un 400 nuestro
