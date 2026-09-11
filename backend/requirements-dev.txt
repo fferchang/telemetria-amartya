@@ -1,0 +1,9 @@
+# Lo de produccion, mas lo que hace falta para desarrollar y probar.
+# Se instala con:  pip install -r backend/requirements-dev.txt
+-r requirements.txt
+
+# Los tests de backend/test_backend.py.
+pytest==9.1.1
+
+# Lo usa tools/sembrar.py para cargar lecturas de prueba contra la API.
+requests==2.32.3

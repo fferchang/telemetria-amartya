@@ -14,8 +14,9 @@ final, desde el celular, al aire libre, que solo quiere saber si le queda agua;
 y quien mantiene el equipo, que necesita saber si el nodo está vivo. La pantalla
 está en dos capas por eso.
 
-**Estado al 11/09/2026:** solo la interfaz, andando con datos simulados. No hay
-backend ni firmware ni hardware todavía.
+**Estado al 11/09/2026:** interfaz y backend, probados juntos de punta a punta.
+Falta el firmware y el hardware. El empaquetado de Docker está escrito pero sin
+verificar (el daemon no corría en la máquina de desarrollo).
 
 ## Decisiones de arquitectura ya cerradas
 
@@ -36,11 +37,35 @@ backend ni firmware ni hardware todavía.
   descarte: es lo que permite desarrollar y demostrar sin hardware, y lo que hace
   que no haya que comentar y descomentar código para una demo — que es
   exactamente cómo se rompen las demos.
-- **SQLite recomendado sobre InfluxDB** para la serie histórica. Un nodo cada 15
-  minutos son ~35.000 lecturas al año; InfluxDB empieza a ganar en el orden de
-  millones (el caso de Casa Rosada, ~7 millones al año). Ver
-  `docs/DESPLIEGUE.md`. No está implementado todavía, así que sigue siendo
-  reversible.
+- **SQLite y no InfluxDB** para la serie histórica. Un nodo cada 15 minutos son
+  ~35.000 lecturas al año; InfluxDB empieza a ganar en el orden de millones (el
+  caso de Casa Rosada, ~7 millones al año). Ver `docs/DESPLIEGUE.md`. Sigue
+  siendo reversible sin tocar frontend ni firmware, porque los dos hablan con la
+  API y no con la base.
+- **Flask y no la biblioteca estándar** para la API. `http.server` evitaría la
+  dependencia, pero el ruteo, el parseo del cuerpo, los códigos de error y el
+  manejo de excepciones a mano son ~200 líneas que hay que mantener y que no son
+  el problema de este proyecto. Flask además está documentada en todos lados,
+  que importa para poder buscar cuando algo falla.
+- **La clave primaria de `lecturas` es `(node_id, timestamp_unix)`.** El nodo
+  bufferiza y reintenta, así que el mismo instante puede llegar dos veces; con
+  esta clave el reintento cae encima del original (`INSERT OR REPLACE`) en vez
+  de duplicar el punto. Mismo razonamiento que la aceptación de duplicados de
+  MQTT QoS 1 en Casa Rosada.
+- **`reloj_dudoso` lo manda `/estado` pero NO `/historico`.** Una lectura con el
+  reloj roto se guarda con la hora de recepción, que es perfectamente usable
+  para ubicarla en el gráfico. El flag sirve para el dato ACTUAL, donde la
+  pregunta es "¿de cuándo es este número?". Si viajara en el histórico, la
+  interfaz filtraría del gráfico un tramo entero de historia real.
+- **Base vacía es `200 {"sin_lecturas": true}`, no un 404.** Un error HTTP haría
+  que la interfaz muestre "sin conexión", que es falso y manda a revisar la red
+  cuando el que no publicó es el nodo. La interfaz lo muestra como un estado
+  propio ("todavía no llegó ninguna lectura"), distinto de "sin datos": ahí hubo
+  lecturas y se cortaron, acá nunca hubo.
+- **El backend sirve también la interfaz, pero solo en desarrollo**
+  (`crear_app(servir_ui=True)`, que es el default; el Dockerfile lo apaga). Es
+  para que en local sea un proceso en vez de dos y no haya CORS. En producción
+  lo hace nginx, que para archivos estáticos es mucho mejor que Python.
 - **Sin build, sin npm, sin framework.** Archivos estáticos servidos tal cual,
   igual que `dashboard/` en Casa Rosada. Las verificaciones corren en el
   navegador (`ui/test.html`) o en Python (`tools/contraste.py`) justamente para
@@ -124,6 +149,26 @@ Acá se hizo bien desde el arranque; si allá se arregla, el criterio es este.
 - **`toLocaleString("es-AR")` devolvía "04:27" para las 16:27** — formato de 12
   horas sin el AM/PM. En una ficha de diagnóstico eso manda a buscar en los logs
   el momento equivocado. Va con `{ hour12: false }` explícito.
+- **`localhost` contra `127.0.0.1` en Windows: 20× de diferencia.** Medido, 2160
+  ms por request contra `localhost` y 110 ms contra `127.0.0.1`. `localhost`
+  resuelve primero a `::1` (IPv6), el servidor de desarrollo escucha solo en
+  IPv4, y Windows tarda ~2 segundos en dar por perdido ese intento antes de
+  reintentar. Sembrar 673 lecturas pasaba de 80 segundos a **24 minutos**. Por
+  eso `tools/sembrar.py` usa `127.0.0.1` por default y el mensaje de arranque
+  del backend imprime esa dirección. En producción no pasa (nginx escucha en los
+  dos stacks).
+- **El esquema de la base se creaba en CADA request.** `db.conectar()` corría
+  `executescript(ESQUEMA)` y renegociaba el modo WAL cada vez, y como la
+  conexión es por request, eso multiplicaba el costo de cada POST. Se separó en
+  `db.inicializar()`, que corre una sola vez al crear la app.
+- **La ventana de suavizado del consumo estaba en 5 y sobreestimaba 15%.**
+  Medido contra datos sembrados a un consumo real conocido de 340 l/día:
+  sin suavizar daba 992 (¡el triple!), con ventana 5 daba 392, con 15 daba 341.
+  El ruido del ultrasónico entra en la cuenta de forma asimétrica —se suman solo
+  las bajadas, así que cada zigzag aporta su mitad negativa como si fuera
+  consumo— y por eso no se cancela solo. Ahora la ventana se calcula por TIEMPO
+  (3.5 h) y no en cantidad de puntos, así se ajusta sola si cambia el ciclo de
+  publicación del nodo.
 - **El dibujo del tanque se leía como una PILA.** Un rectángulo vertical angosto
   con una tapita centrada arriba es el icono de una batería, con el agravante de
   que una pila al 62% significa lo mismo que un tanque al 62%, así que el error
@@ -152,11 +197,23 @@ Dos cosas que ese script decide y conviene no revertir sin pensarlo:
 
 ## Pendiente
 
-- [ ] Backend contra el contrato de `ui/datos.js`, con SQLite.
-- [ ] Autenticación del `POST /lectura`. Sin eso cualquiera puede inyectar
-      lecturas falsas, y un 95% inventado es peor que no tener el sistema.
+- [ ] **Verificar el empaquetado de Docker.** `backend/Dockerfile`,
+      `docker-compose.yml` y `nginx/default.conf` están escritos con cuidado
+      pero **nunca se construyeron**: el daemon de Docker no corría en la
+      máquina de desarrollo. Correr `docker compose up --build` y comprobar que
+      la API quede *healthy* antes de contar con ellos.
 - [ ] Firmware, adaptando `lib/Telemetria/` de Casa Rosada: cambia el driver del
-      sensor y el publisher (HTTP en vez de MQTT).
+      sensor y el publisher (HTTP en vez de MQTT). El token va en
+      `include/config.local.h` y viaja como `Authorization: Bearer <token>`.
+- [ ] Backups de la base. Con SQLite es copiar un archivo, pero con el servicio
+      parado o vía `sqlite3 origen.db ".backup destino.db"` — un `cp` con la
+      base en uso puede salir inconsistente. Y un backup que nunca se restauró
+      no es un backup: en Casa Rosada eso se ensayó destruyendo el volumen
+      entero, y de ahí salieron dos gotchas que la documentación no decía.
+- [x] Backend contra el contrato de `ui/datos.js`, con SQLite. Hecho: 34 tests,
+      y probado de punta a punta contra la interfaz con 673 lecturas sembradas.
+- [x] Autenticación del `POST /lectura` con token, más límite de tasa. La API se
+      niega a arrancar si falta el token, sin default posible.
 - [ ] Medir el tanque real y cargar `distanciaFondoCm`, `distanciaLlenoCm` y
       `capacidadLitros`.
 - [ ] **Confirmar la forma del tanque.** Los litros suponen sección constante

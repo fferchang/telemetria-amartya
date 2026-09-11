@@ -17,6 +17,14 @@ venv/
 .venv/
 .pytest_cache/
 
+# La base de datos. En produccion vive en un volumen de Docker; esto es la
+# copia local de desarrollo, con lecturas sembradas de prueba. Subirla seria
+# subir datos inventados que despues alguien puede confundir con reales.
+datos/
+*.db
+*.db-wal
+*.db-shm
+
 # Sistema operativo y editores
 Thumbs.db
 Desktop.ini

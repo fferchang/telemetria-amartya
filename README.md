@@ -4,12 +4,12 @@ Monitoreo del nivel de agua de una cisterna con un ESP32 y un sensor
 ultrasónico montado en la tapa. Parte de la familia GridWire (junto con
 GridWire industrial y Casa Rosada), con el mismo patrón `ISensor`/`IPublisher`.
 
-**Estado actual: solo la interfaz.** Anda con datos simulados, sin backend y sin
-hardware. Es lo que se puede mostrar hoy.
+**Estado actual: interfaz y backend.** Las dos piezas andan y están probadas
+juntas. Falta el firmware del nodo y el hardware.
 
 ---
 
-## Verlo andando
+## Verlo andando — la interfaz sola
 
 No hay que instalar nada. Desde la raíz del repo:
 
@@ -17,11 +17,57 @@ No hay que instalar nada. Desde la raíz del repo:
 python -m http.server 8137 --directory ui
 ```
 
-y abrir <http://localhost:8137>.
+y abrir <http://localhost:8137>. Viene con `origen: "simulado"`, así que muestra
+datos inventados y avisa que lo son (la píldora verde del encabezado).
 
 Se puede abrir `ui/index.html` con doble clic también, pero conviene el
 servidor: algunos navegadores tratan `file://` de forma rara y, sobre todo, así
 se prueba igual que como va a estar servido de verdad.
+
+## Verlo andando — con el backend de verdad
+
+```bash
+python -m venv .venv
+.venv\Scripts\pip install -r backend/requirements-dev.txt
+```
+
+Generar un token y ponerlo en el entorno:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+```bash
+set AMARTYA_TOKEN_NODO=lo-que-salio-arriba
+```
+
+Levantar la API (sirve también la interfaz, así que es un solo proceso y no hay
+CORS que configurar):
+
+```bash
+.venv\Scripts\python backend/app.py
+```
+
+Cargar lecturas de prueba — hace falta subir el límite de tasa solo para esto,
+porque la API acepta 6 POST por minuto y el sembrador manda cientos:
+
+```bash
+set AMARTYA_MAX_POST_POR_MINUTO=100000
+```
+
+```bash
+.venv\Scripts\python tools/sembrar.py --dias 7 --nivel-ahora 62
+```
+
+Y por último, en `ui/config.js` poner `origen: "http"` y subirle el `?v=` a
+`config.js` en `ui/index.html`. Abrir <http://127.0.0.1:8000>.
+
+> **Usá `127.0.0.1` y no `localhost`.** En Windows, `localhost` resuelve primero
+> a `::1` (IPv6) y el servidor de desarrollo escucha solo en IPv4, así que cada
+> pedido espera ~2 segundos a que falle el intento por IPv6 antes de reintentar.
+> Medido: 110 ms por request contra `127.0.0.1`, 2160 ms contra `localhost` —
+> sembrar 673 lecturas pasa de 80 segundos a 24 minutos. En producción no pasa,
+> porque nginx escucha en los dos stacks.
 
 ## Elegir qué escenario mostrar
 
@@ -43,18 +89,99 @@ propósito — ver más abajo.
 
 ## Verificaciones
 
-Las dos corren sin instalar dependencias.
+**Backend — 34 tests.** Necesita el venv:
+
+```bash
+.venv\Scripts\python -m pytest backend/ -v
+```
+
+**Colores — 44 pares contra WCAG 2.1 AA**, en tema claro y oscuro, leyendo los
+tokens directamente de `ui/style.css` (no una copia, que quedaría
+desincronizada). Sin dependencias:
 
 ```bash
 python tools/contraste.py
 ```
 
-Mide los 44 pares de color de la interfaz contra WCAG 2.1 AA, en tema claro y
-oscuro, leyendo los tokens directamente de `ui/style.css`. Hoy pasan todos.
+**Simulador y cuentas de nivel — 22 checks.** Se abren en el navegador, en
+`/test.html`, justamente para no necesitar Node.
 
-Para la lógica del simulador y las cuentas de nivel, abrir
-<http://localhost:8137/test.html> con el servidor levantado. Corre en el
-navegador justamente para no necesitar Node.
+Hoy pasan las tres.
+
+---
+
+## La API
+
+El contrato está escrito y comentado en [`ui/datos.js`](ui/datos.js), y esa
+documentación es anterior al backend: se definió primero para poder escribir las
+dos mitades sin que ninguna esperara a la otra.
+
+| | | |
+|---|---|---|
+| `POST` | `/api/lectura` | lo que manda el nodo — **necesita token** |
+| `GET` | `/api/estado` | la última lectura |
+| `GET` | `/api/historico?horas=N` | la serie |
+| `GET` | `/api/salud` | healthcheck; toca la base a propósito |
+
+El nodo se autentica con `Authorization: Bearer <token>`. Los `GET` son públicos
+(ver *Seguridad*, abajo).
+
+### Lo que la API deliberadamente no hace
+
+- **No calcula porcentajes ni litros.** Eso sale de la geometría del tanque, que
+  es configuración de cada instalación y vive en `ui/config.js`. Si el backend
+  devolviera el porcentaje, cambiar la altura del tanque obligaría a redeployar
+  el backend en vez de editar un archivo.
+- **No evalúa umbrales ni dispara alertas.** La interfaz decide qué es "bajo"
+  contra su propia config. Es la misma decisión que se tomó en Casa Rosada,
+  donde un motor de alertas en Python se escribió y se descartó.
+
+### Por qué SQLite
+
+Un nodo publicando cada 15 minutos son ~35.000 lecturas al año, y una consulta
+de 7 días toca ~700 filas. InfluxDB empieza a ganar en el orden de millones de
+puntos — que es exactamente el caso de Casa Rosada (28 nodos cada 2 minutos) y
+exactamente no el de acá. El razonamiento largo está en
+[docs/DESPLIEGUE.md](docs/DESPLIEGUE.md).
+
+Si resulta equivocado se cambia sin drama: la interfaz habla con la API y no con
+la base, así que cambiar de motor es reescribir el backend, no el frontend ni el
+firmware.
+
+### Detalles que no son obvios
+
+- **La clave primaria es `(node_id, timestamp_unix)`.** El nodo bufferiza y
+  reintenta, así que el mismo instante puede llegar dos veces; con esta clave el
+  reintento cae encima del original en vez de duplicar el punto y torcer el
+  gráfico. Es el mismo razonamiento por el que Casa Rosada acepta que MQTT con
+  QoS 1 duplique mensajes.
+- **"Última lectura" se ordena por hora de MEDICIÓN, no de llegada.** Cuando el
+  nodo descarga su buffer, la última en llegar es la más vieja de la tanda.
+- **Un nodo sin NTP se guarda con la hora de recepción y marcado.** El dato no
+  se descarta —el agua igual se midió bien— pero el flag `reloj_dudoso` viaja
+  hasta la pantalla, que lo muestra como un estado propio.
+- **Ese flag lo manda `/estado` pero no `/historico`**, y es a propósito: en la
+  serie esos puntos ya tienen una hora usable, y si el flag viajara, la interfaz
+  filtraría del gráfico un tramo entero de historia real.
+- **Una distancia fuera del rango físico de cualquier ultrasónico se marca
+  inválida pero se guarda con su valor crudo.** Una lectura inválida es
+  información sobre el equipo, no basura.
+- **Base vacía devuelve `200 {"sin_lecturas": true}`, no un 404.** Un error HTTP
+  haría que la interfaz muestre "sin conexión", que es falso: mandaría a revisar
+  la red cuando el que no publicó es el nodo.
+
+### Seguridad
+
+- **El `POST` necesita token**, sin default posible: la API se niega a arrancar
+  si falta. Un default (aunque sea "cambiame") deja el endpoint de escritura
+  abierto mientras todo parece andar bien, y un nivel de 95% inventado es peor
+  que no tener el sistema porque nadie va a ir a mirar el tanque.
+- **Los `GET` son públicos**, pero conviene saber que lo son: quien tenga la URL
+  ve el nivel de agua de la casa, que es un dato de presencia (tanque quieto
+  varios días = no hay nadie). Si eso importa, va detrás de una contraseña.
+- **Límite de tasa** de 6 POST por minuto por IP.
+- El token se compara con `hmac.compare_digest` y no con `==`, para que el
+  tiempo que tarda no filtre cuántos caracteres se acertaron.
 
 ---
 
@@ -150,36 +277,53 @@ ahí haría pensar que el agua está baja, que es justo lo que no se sabe.
 ## Estructura
 
 ```
-ui/
-  index.html     La pantalla
-  style.css      Tokens y layout (mobile-first, claro + oscuro)
-  app.js         Cálculo, clasificación de estados, pintado y gráfico
-  datos.js       De dónde salen los datos: simulador o backend HTTP
-  config.js      Geometría del tanque, umbrales y escenario de demo
-  test.html      Verificaciones, se abren en el navegador
-  vendor/        Chart.js
-tools/
-  contraste.py   Auditoría WCAG de los colores
-docs/
-  DESPLIEGUE.md  Cómo pasar de esto a un servicio andando
-```
+ui/                  La pantalla. Sin build, sin npm, sin framework:
+  index.html           archivos estáticos que se sirven tal cual, igual
+  style.css            que dashboard/ en Casa Rosada.
+  app.js             Cálculo, clasificación de estados, pintado, gráfico
+  datos.js           De dónde salen los datos: simulador o backend HTTP
+  config.js          Geometría del tanque, umbrales y escenario de demo
+  test.html          22 verificaciones, se abren en el navegador
+  vendor/            Chart.js
 
-Sin build, sin `npm install`, sin framework. Son archivos estáticos que se
-sirven tal cual, lo mismo que hace `dashboard/` en Casa Rosada.
+backend/             La API
+  app.py             Rutas, validación, autenticación, submuestreo
+  db.py              SQLite
+  tiempo.py          Validación del reloj del nodo
+  config.py          Configuración por variables de entorno
+  test_backend.py    34 tests
+  Dockerfile
+
+tools/
+  contraste.py       Auditoría WCAG de los colores
+  sembrar.py         Carga lecturas de prueba contra la API real
+
+nginx/               Sirve la interfaz y hace de proxy hacia /api
+docs/DESPLIEGUE.md   Cómo pasar de esto a un servicio andando
+docker-compose.yml   API + nginx
+```
 
 ---
 
 ## Lo que falta
 
-- [ ] El backend. El contrato ya está escrito y comentado en `ui/datos.js`
-      (`GET /estado` y `GET /historico?horas=N`); falta implementarlo.
+- [ ] **Probar el empaquetado de Docker.** `Dockerfile`, `docker-compose.yml` y
+      `nginx/default.conf` están escritos pero **no verificados**: se hicieron
+      sin poder construirlos, porque el daemon de Docker no estaba corriendo en
+      la máquina de desarrollo. Lo de adentro sí está probado. Antes de confiar
+      en ellos: `docker compose up --build` y ver que la API quede *healthy*.
 - [ ] El firmware del nodo. Se adapta de Casa Rosada: cambia el driver del
       sensor y el publisher (HTTP en vez de MQTT), el resto de
-      `lib/Telemetria/` sirve igual.
+      `lib/Telemetria/` sirve igual. El token va en `include/config.local.h`.
 - [ ] Medir el tanque real y cargar `distanciaFondoCm`, `distanciaLlenoCm` y
       `capacidadLitros` en `ui/config.js`.
 - [ ] Confirmar la forma del tanque. Los litros de hoy suponen sección
       constante (cilindro parado o prisma); para uno esférico o acostado hace
       falta una tabla de conversión. El porcentaje de altura es correcto en
       cualquier forma.
-- [ ] Decidir el hosting (ver `docs/DESPLIEGUE.md`).
+- [ ] Decidir el hosting (ver `docs/DESPLIEGUE.md`, punto 5, para la lista de
+      preguntas).
+- [ ] Backups de la base. Con SQLite es copiar un archivo, pero **con el
+      servicio parado o con `sqlite3 origen.db ".backup destino.db"`** — un `cp`
+      con la base en uso puede salir inconsistente. Y un backup que nunca se
+      restauró no es un backup.

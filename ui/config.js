@@ -21,9 +21,25 @@ window.AMARTYA_CONFIG = {
   /* Cómo se llama este tanque para quien lo mira. Va en el encabezado. */
   sitio: "Cisterna principal",
 
-  /* "simulado" = datos inventados por datos.js, sin backend. Es el default a
-     propósito: así el repo recién clonado se abre y se ve andando.
-     "http"     = pide los datos al backend real (ver `apiUrl`). */
+  /* De dónde salen los datos.
+
+       "simulado" = inventados por datos.js, sin backend ni hardware.
+       "http"     = del backend real (ver `apiUrl` abajo).
+
+     QUEDA EN "simulado" EN EL REPO aunque el backend ya exista y funcione, y
+     es una decisión, no un olvido: así un clon recién hecho se abre y se ve
+     andando sin token, sin servidor y sin base. Para mostrar la pantalla eso
+     vale más que mostrar el stack completo, porque no hay nada que pueda
+     fallar en el momento.
+
+     Lo que hace que esto no sea peligroso es que la página lo dice: la píldora
+     del encabezado muestra "Datos simulados" en verde y bien visible, y el
+     detalle del nodo dice "Simulado" en el origen. Una demo que no avisa que
+     es una demo es una demo que alguien va a confundir con el sistema andando.
+
+     Para usar el backend de verdad: poner "http" acá y subir el `?v=` de
+     config.js en index.html (si no, el navegador sigue con el archivo viejo).
+     Los pasos completos están en el README. */
   origen: "simulado",
 
   /* Base de la API cuando `origen` es "http". Relativa si el frontend y el

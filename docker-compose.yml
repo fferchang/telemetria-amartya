@@ -1,0 +1,59 @@
+# El servicio completo: la API y la interfaz.
+#
+# NO VERIFICADO TODAVIA: se escribio sin poder levantarlo, porque en la maquina
+# de desarrollo el daemon de Docker no estaba corriendo. Lo de adentro si esta
+# probado (34 tests del backend y la interfaz andando de punta a punta contra
+# el). Antes de confiar en esto para un despliegue: `docker compose up --build`
+# y verificar que `docker compose ps` muestre la API como healthy.
+#
+# Para levantarlo hace falta un .env con AMARTYA_TOKEN_NODO (ver .env.example).
+#
+# Los dos servicios llevan `restart: unless-stopped`. Sin eso, un reinicio del
+# servidor deja el stack abajo sin que nada avise: el nodo sigue publicando
+# contra una API que no esta, llena su buffer y empieza a descartar lecturas.
+# `unless-stopped` y no `always` a proposito — si alguien baja un servicio a
+# mano con `docker compose stop`, tiene que quedarse abajo.
+#
+# OJO: esto hace que los contenedores vuelvan cuando arranca el daemon de
+# Docker, pero NO hace que arranque el daemon.
+
+services:
+  api:
+    build: ./backend
+    environment:
+      # Sale del archivo .env, que NO va al repo. Sin esta variable la API se
+      # niega a arrancar a proposito (ver backend/config.py): un token con
+      # default dejaria el endpoint de escritura abierto y nadie se enteraria.
+      AMARTYA_TOKEN_NODO: ${AMARTYA_TOKEN_NODO:?falta AMARTYA_TOKEN_NODO en .env}
+      AMARTYA_DB: /datos/amartya.db
+    volumes:
+      # Volumen nombrado y no un bind mount: sobrevive a `docker compose down`
+      # y a cada rebuild de la imagen. Aca vive TODO el historico.
+      - datos:/datos
+    # Sin `ports:` a proposito. La API no se publica al exterior: el unico que
+    # le habla es nginx, por la red interna del compose. Un puerto de mas es
+    # una puerta de mas que hay que acordarse de cerrar.
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      # La interfaz se monta de solo lectura desde el repo. No hay build: son
+      # archivos estaticos y se sirven tal cual, asi que actualizar la pantalla
+      # es un `git pull` y un `docker compose restart web`.
+      - ./ui:/usr/share/nginx/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      # Solo espera a que el contenedor arranque, no a que este listo. Si nginx
+      # queda arriba antes que la API, los primeros /api dan 502 y la interfaz
+      # muestra "Sin conexion" unos segundos, que es exactamente lo que tiene
+      # que mostrar.
+      - api
+    restart: unless-stopped
+
+volumes:
+  datos:

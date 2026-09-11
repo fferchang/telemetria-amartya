@@ -110,15 +110,63 @@
     };
   }
 
-  /* Suaviza la serie con un promedio móvil antes de estimar el consumo.
+  /* Cuánto suavizar antes de estimar el consumo, en cantidad de puntos.
 
-     POR QUÉ HACE FALTA: el ultrasónico tiene una dispersión de aproximadamente
-     +/-1 cm. Al estimar el consumo sumando todas las bajadas punto a punto, ese
-     ruido se suma como si fuera consumo real —cada zigzag aporta su mitad
-     negativa— y el resultado sale sistemáticamente inflado. No es un error
-     chico: con lecturas cada 15 minutos, el ruido puede aportar más "consumo"
-     que el consumo. El promedio móvil lo cancela porque el ruido es simétrico
-     y el consumo no. */
+     LOS NÚMEROS DE ACÁ ESTÁN MEDIDOS, no elegidos a ojo. Con siete días de
+     datos sembrados a un consumo real conocido de 340 l/día y el ruido típico
+     del ultrasónico, la estimación daba:
+
+         sin suavizar    992 l/día   (¡el triple!)
+         ventana 5       392 l/día   (+15%)
+         ventana 9       350 l/día   (+3%)
+         ventana 15      341 l/día   (+0.3%)
+         ventana 31      336 l/día   (-1%)
+
+     O sea que el suavizado no es un retoque cosmético: es lo único que separa
+     una estimación usable de una que triplica. La razón es que el ruido entra
+     en la cuenta de forma asimétrica —se suman solo las bajadas, así que cada
+     zigzag aporta su mitad negativa como si fuera consumo— y por eso no se
+     cancela solo por ser simétrico.
+
+     LA VENTANA SE CALCULA POR TIEMPO Y NO SE DEJA FIJA EN 15. Un número fijo
+     de puntos significa distinta cantidad de horas según cada cuánto publique
+     el nodo, y es justamente la cantidad de horas lo que determina cuánto
+     ruido se cancela. Con el ciclo de 15 minutos de hoy, las 3.5 horas de abajo
+     dan una ventana de 15 puntos, que es el óptimo medido; si mañana el nodo
+     pasa a publicar cada 2 minutos, la ventana se ajusta sola.
+
+     3.5 horas es un rato largo, y está bien que lo sea: acá se estima un
+     consumo DIARIO, que se mueve en escalas de días. Lo que se pierde por
+     suavizar es detalle de corto plazo que no entra en esta cuenta. */
+  const HORAS_DE_SUAVIZADO = 3.5;
+  const VENTANA_MINIMA = 5;
+  const VENTANA_MAXIMA = 41;
+
+  function ventanaDeSuavizado(puntos) {
+    // Intervalo típico entre lecturas. Se usa la MEDIANA y no el promedio
+    // porque un hueco de seis horas (nodo caído) corre el promedio y no la
+    // mediana.
+    const intervalos = [];
+    for (let i = 1; i < puntos.length; i++) {
+      const dt = puntos[i].timestampMs - puntos[i - 1].timestampMs;
+      if (dt > 0) intervalos.push(dt);
+    }
+    if (!intervalos.length) return VENTANA_MINIMA;
+
+    intervalos.sort((a, b) => a - b);
+    const mediana = intervalos[Math.floor(intervalos.length / 2)];
+
+    let ventana = Math.round((HORAS_DE_SUAVIZADO * 3600000) / mediana);
+
+    // Impar, para que el promedio móvil quede centrado en cada punto en vez de
+    // correr la serie media muestra hacia un lado.
+    if (ventana % 2 === 0) ventana += 1;
+
+    return Math.max(VENTANA_MINIMA, Math.min(VENTANA_MAXIMA, ventana));
+  }
+
+  /* Suaviza la serie con un promedio móvil centrado.
+     Ver `ventanaDeSuavizado()` arriba para por qué esto es imprescindible. */
   function suavizar(valores, ventana) {
     if (valores.length < ventana) return valores.slice();
 
@@ -153,7 +201,7 @@
         const n = derivarNivel(p);
         return n ? n.pct : 0;
       }),
-      5
+      ventanaDeSuavizado(utiles)
     );
 
     let caidaPct = 0;
@@ -686,6 +734,53 @@
      7. Arranque y ciclo de refresco
      ======================================================================= */
 
+  /* El servicio anda pero todavía no llegó ninguna lectura.
+
+     Es el estado de un sistema recién instalado, y es DISTINTO de "sin datos":
+     ahí hubo lecturas y dejaron de llegar, acá nunca hubo. La diferencia
+     importa para quien está instalando — "revisá por qué se cortó" contra
+     "todavía no publicó la primera vez" mandan a mirar cosas distintas. */
+  function pintarSinLecturas() {
+    const veredicto = $("veredicto");
+    $("veredicto-titulo").textContent = "Todavía no llegó ninguna lectura";
+    ponerClaseEstado(veredicto, "veredicto", "mudo");
+
+    const detalle = $("veredicto-detalle");
+    detalle.textContent =
+      "El servicio está andando y esperando. Si el nodo ya está instalado y " +
+      "encendido, revisá que tenga la dirección del servidor bien cargada.";
+    detalle.hidden = false;
+
+    $("nivel-pct").textContent = "—";
+    $("nivel-pct").classList.add("lectura__numero--vacio");
+    $("nivel-unidad").hidden = true;
+    $("linea-litros").hidden = true;
+    $("antiguedad").textContent = "Sin lecturas";
+    document.querySelector(".lectura").classList.remove("lectura--dudosa");
+    pintarTanque(0);
+
+    $("fecha-vacio").textContent = "—";
+    $("consumo").textContent = "—";
+    $("salvedad").textContent =
+      "Cuando lleguen las primeras lecturas se puede estimar cuánto dura el agua.";
+
+    const pista = $("detalle-pista");
+    pista.textContent = "Esperando";
+    pista.className = "detalle__pista detalle__pista--mudo";
+
+    ["ficha-ultima", "ficha-distancia", "ficha-columna", "ficha-reloj",
+     "ficha-senal"].forEach((id) => { $(id).textContent = "—"; });
+    $("ficha-estado").textContent = "Nunca publicó";
+
+    const t = cfg.tanque;
+    $("ficha-geometria").textContent =
+      "fondo " + t.distanciaFondoCm + " cm · lleno " + t.distanciaLlenoCm +
+      " cm · " + formatearLitros(t.capacidadLitros) + " l";
+    $("ficha-origen").textContent = window.Datos.esSimulado()
+      ? "Simulado"
+      : "Backend " + cfg.apiUrl;
+  }
+
   async function refrescar() {
     try {
       const lectura = await window.Datos.estado();
@@ -695,6 +790,13 @@
         true,
         window.Datos.esSimulado() ? "Datos simulados" : "Conectado"
       );
+
+      // `null` = el backend contestó bien, pero no hay ninguna lectura todavía.
+      if (lectura === null) {
+        pintarSinLecturas();
+        return;
+      }
+
       pintarEstado(lectura);
     } catch (error) {
       // Falla de red o backend caído: se avisa arriba y se DEJA lo último que

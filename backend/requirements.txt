@@ -1,0 +1,19 @@
+# Dependencias de produccion. Las versiones van clavadas, no con >=, por la
+# misma razon por la que el firmware de Casa Rosada clava las suyas en
+# platformio.ini: que el proyecto compile igual en cualquier maquina y dentro de
+# seis meses, sin que una version nueva de algo cambie el comportamiento sin que
+# nadie lo haya pedido.
+
+# El framework web. Ver la cabecera de app.py para por que Flask y no la
+# biblioteca estandar.
+Flask==3.1.3
+
+# El servidor de produccion. El que trae Flask (`app.run()`) es de desarrollo y
+# la propia documentacion dice que no se use para servir de verdad: atiende de a
+# poco, no maneja bien las conexiones lentas y no reinicia workers colgados.
+#
+# OJO: gunicorn no corre en Windows. Es a proposito y no molesta, porque en
+# Windows se desarrolla con `python backend/app.py` (servidor de desarrollo) y
+# esto se usa solo dentro del contenedor, que es Linux. Si alguna vez hace falta
+# servir en serio desde Windows, el equivalente es `waitress`.
+gunicorn==23.0.0

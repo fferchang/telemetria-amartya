@@ -78,7 +78,18 @@
       // por hora de llegada, un dato viejo que recién se descarga de un buffer
       // se muestra como recién nacido.
       timestampMs: timestampMs,
-      relojConfiable: relojPlausible(timestampMs),
+
+      /* El reloj se considera confiable solo si pasan LAS DOS cosas: que el
+         backend no lo haya marcado como dudoso, y que la hora sea plausible
+         vista desde acá.
+
+         Son dos chequeos y no uno porque cubren casos distintos. El backend
+         detecta el reloj roto en el momento en que llega la lectura, y después
+         guarda el punto con la hora de recepción —así el gráfico funciona— y
+         manda `reloj_dudoso: true` para que esa corrección no se disfrace de
+         dato bueno. El chequeo local, en cambio, sigue haciendo falta para el
+         simulador y para cualquier dato que no haya pasado por el backend. */
+      relojConfiable: cruda.reloj_dudoso !== true && relojPlausible(timestampMs),
       // `valid: false` = el nodo está vivo y publicando, pero el sensor no
       // contestó. Es un estado distinto de "el nodo no publica", y se muestra
       // distinto (ver app.js).
@@ -114,7 +125,20 @@
   async function estadoHttp(cfg) {
     const resp = await fetch(cfg.apiUrl + "/estado", { cache: "no-store" });
     if (!resp.ok) throw new Error("El backend respondió " + resp.status);
-    return normalizarLectura(await resp.json());
+
+    const datos = await resp.json();
+
+    /* Base vacía: el servicio está recién instalado y el nodo todavía no
+       publicó nada. Devuelve `null`, que `app.js` muestra como "todavía no
+       llegó ninguna lectura".
+
+       El backend responde esto con un 200 y no con un 404 justamente para que
+       llegue hasta acá: un error HTTP haría que la interfaz muestre "sin
+       conexión", que es falso — el backend contestó perfecto. Mandaría a
+       revisar la red cuando el que no publicó es el nodo. */
+    if (datos.sin_lecturas) return null;
+
+    return normalizarLectura(datos);
   }
 
   /* Pide la serie histórica.
